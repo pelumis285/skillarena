@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+:root {
+  color: #18181b;
+  background: #070b15;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  overscroll-behavior-y: none;
+  background:
+    radial-gradient(circle at top, rgba(99, 102, 241, 0.18), transparent 28%),
+    radial-gradient(circle at 85% 15%, rgba(236, 72, 153, 0.12), transparent 24%),
+    linear-gradient(180deg, #09101d 0%, #070b15 42%, #05070f 100%);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-safe-shell {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.app-safe-bottom-nav {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+@layer utilities {
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}

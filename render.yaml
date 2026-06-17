@@ -2,15 +2,11 @@ services:
   - name: skillarena-beta-api
     type: web
     runtime: node
-    plan: starter
+    plan: free
     region: ohio
     buildCommand: npm ci && npm run typecheck
     startCommand: npm run server:start
     healthCheckPath: /health
-    disk:
-      name: beta-data
-      mountPath: /opt/render/project/src/render-data
-      sizeGB: 10
     envVars:
-      - key: SKILLARENA_DB_PATH
-        value: /opt/render/project/src/render-data/beta-db.json
+      - key: ALLOWED_ORIGINS
+        sync: false

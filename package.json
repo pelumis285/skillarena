@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "pwa:sync": "rsync -a --delete src/ pwa/app-src/",
+    "pwa:dev": "vite --config pwa/vite.config.ts",
+    "pwa:build": "vite build --config pwa/vite.config.ts",
+    "pwa:preview": "vite preview --config pwa/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "server:dev": "tsx watch server/index.ts",

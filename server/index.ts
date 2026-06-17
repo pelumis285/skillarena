@@ -65,6 +65,31 @@ type LoginPayload = {
   password?: string;
 };
 
+function resolveAllowedOrigins() {
+  const configured = process.env.ALLOWED_ORIGINS
+    ?.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (configured?.length) {
+    return configured;
+  }
+
+  return [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'capacitor://localhost',
+    'http://localhost',
+  ];
+}
+
+const allowedOrigins = resolveAllowedOrigins();
+
+function isAllowedOrigin(origin?: string | null) {
+  if (!origin) return true;
+  return allowedOrigins.includes(origin);
+}
+
 function participantFromUser(user: PlayerIdentity, seatIndex: number): ChallengeParticipant {
   return {
     id: user.id,
@@ -229,7 +254,15 @@ function syncChallengeAndRoomState(io: Server, room: ChallengeRoomState, status:
 }
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error(`Origin ${origin} is not allowed by CORS.`));
+  },
+}));
 app.use(express.json());
 
 app.get('/health', (_req, res) => {
@@ -356,7 +389,13 @@ app.get('/api/challenges', (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`Origin ${origin} is not allowed by Socket.IO.`), false);
+    },
   },
 });
 

@@ -1,0 +1,25 @@
+{
+  "name": "SkillArena Friends Test",
+  "short_name": "SkillArena",
+  "description": "A shareable web build for testing Ludo, Whot, Chess, WordForge, and Scrabble Social with friends.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#05070f",
+  "theme_color": "#09101d",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

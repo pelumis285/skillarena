@@ -1,4 +1,5 @@
 export type GameId = 'words' | 'chess' | 'ludo' | 'whot' | 'scrabble';
+export type UserRole = 'player' | 'admin';
 
 export type User = {
   id: string;
@@ -9,6 +10,9 @@ export type User = {
   rating: number;
   tier: 'Bronze' | 'Silver' | 'Gold' | 'Platinum' | 'Diamond' | 'Master';
   joinedAt: string;
+  role?: UserRole;
+  referralCode?: string;
+  referredByCode?: string | null;
 };
 
 export type MatchMode = 'solo' | 'friends';
@@ -91,7 +95,7 @@ export type ChallengeRoomState = {
 
 export type WalletTx = {
   id: string;
-  type: 'deposit' | 'withdrawal' | 'wager' | 'win' | 'refund';
+  type: 'deposit' | 'withdrawal' | 'wager' | 'win' | 'refund' | 'referral_bonus' | 'adjustment';
   amount: number;
   status: 'completed' | 'pending' | 'failed';
   description: string;
@@ -140,4 +144,102 @@ export type OnlinePlayer = {
   game: GameId;
   wlr: string;
   stakePref: string;
+};
+
+export type UserPerformancePoint = {
+  label: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  net: number;
+};
+
+export type UserProfileTotals = {
+  deposited: number;
+  withdrawn: number;
+  wagered: number;
+  earned: number;
+  net: number;
+  matchesPlayed: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  referrals: number;
+  referralPoints: number;
+  referralEarnings: number;
+};
+
+export type ReferredPlayerSummary = {
+  id: string;
+  username: string;
+  displayName: string;
+  joinedAt: string;
+  rewardAmount: number;
+  rewardPoints: number;
+};
+
+export type UserProfileSnapshot = {
+  user: User;
+  balance: number;
+  totals: UserProfileTotals;
+  transactions: WalletTx[];
+  matches: MatchRecord[];
+  performance: UserPerformancePoint[];
+  referral: {
+    code: string;
+    referredByCode: string | null;
+    rewardPerFriend: number;
+    pointsPerFriend: number;
+    friends: ReferredPlayerSummary[];
+  };
+};
+
+export type AdminUserSnapshot = {
+  id: string;
+  username: string;
+  displayName: string;
+  joinedAt: string;
+  balance: number;
+  role: UserRole;
+  deposited: number;
+  withdrawn: number;
+  wagered: number;
+  earned: number;
+  wins: number;
+  losses: number;
+  referralCount: number;
+  referralPoints: number;
+  referralEarnings: number;
+};
+
+export type AdminTrendPoint = {
+  label: string;
+  deposits: number;
+  withdrawals: number;
+  platformRevenue: number;
+  wins: number;
+  losses: number;
+};
+
+export type AdminOverviewSnapshot = {
+  totals: {
+    users: number;
+    admins: number;
+    activeUsers: number;
+    fundedUsers: number;
+    referredUsers: number;
+    totalBalances: number;
+    totalDeposited: number;
+    totalWithdrawn: number;
+    totalWagered: number;
+    totalPayouts: number;
+    totalReferralRewards: number;
+    totalReferralPoints: number;
+    platformRevenue: number;
+  };
+  trends: AdminTrendPoint[];
+  recentTransactions: Array<WalletTx & { userId: string; username: string; displayName: string }>;
+  topPlayers: AdminUserSnapshot[];
+  topReferrers: AdminUserSnapshot[];
+  users: AdminUserSnapshot[];
 };

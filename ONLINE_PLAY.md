@@ -19,7 +19,7 @@ Important tradeoffs for this mode:
 - Free Render web services spin down after 15 minutes without inbound traffic.
 - The next request or new WebSocket connection can take about one minute while the service wakes up.
 - Free Render web services do not support persistent disks.
-- Because of that, locally stored test data like registered users and saved challenges can be lost whenever the service redeploys, restarts, or spins down.
+- Because of that, the SQLite database file can still be lost whenever the service redeploys, restarts, or spins down on the free plan.
 
 This is fine for early friend testing, but not ideal for a smooth realtime game experience.
 
@@ -27,11 +27,22 @@ This is fine for early friend testing, but not ideal for a smooth realtime game 
 
 - `ALLOWED_ORIGINS`
   - comma-separated frontend origins that may call the API and open Socket.IO connections
+  - keep the mobile app origins too, especially `capacitor://localhost` and `http://localhost`
   - example:
 
 ```bash
-ALLOWED_ORIGINS=https://pwa-ebon-mu.vercel.app,https://your-custom-domain.com
+ALLOWED_ORIGINS=https://pwa-ebon-mu.vercel.app,https://your-custom-domain.com,capacitor://localhost,http://localhost
 ```
+
+- `SKILLARENA_ADMIN_EMAILS`
+  - comma-separated email addresses that should open the app with admin privileges
+  - example:
+
+```bash
+SKILLARENA_ADMIN_EMAILS=you@example.com,partner@example.com
+```
+
+On a brand-new database, the very first account created is also promoted to admin automatically.
 
 ## Frontend environment variables
 
@@ -46,4 +57,4 @@ Then redeploy the frontend so the shared link points at the real backend.
 
 ## When you want a smoother test
 
-Upgrade the Render service from `free` to `starter` and re-add a persistent disk-backed database path. That removes the free-tier sleep behavior and lets the local beta database survive service restarts.
+Upgrade the Render service from `free` to `starter` and add a persistent disk-backed database path with `SKILLARENA_DB_PATH`. That removes the free-tier sleep behavior and lets the SQLite database survive service restarts.

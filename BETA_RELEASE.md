@@ -12,13 +12,15 @@ Use the included [render.yaml](/Applications/Desktop/The App/skill-based-gaming-
 What it sets up:
 
 - a Node web service for the shared beta backend
-- a persistent disk path for `beta-db.json`
+- a backend ready to use a SQLite database file
 - a health check on `/health`
 
 Important:
 
-- The included Render setup uses the `starter` plan because persistent disks are not available on Render free web services.
-- User accounts and posted challenges persist on disk.
+- The included `render.yaml` currently uses the `free` plan to keep costs down.
+- The backend now stores data in a SQLite database file instead of JSON.
+- On the Render free plan, that SQLite file is still ephemeral because persistent disks are not available.
+- If you want account, wallet, and referral data to survive backend restarts on Render, move to a plan with a persistent disk and set `SKILLARENA_DB_PATH`.
 - Live Ludo match state is still in server memory, so an active match will reset if the backend restarts during play.
 
 Render steps:

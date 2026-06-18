@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn, money } from '../lib/utils';
-import { Home, Swords, Trophy, Wallet, User } from 'lucide-react';
+import { Home, LayoutDashboard, Swords, Trophy, User, Wallet } from 'lucide-react';
 import type { User as UserType } from '../lib/types';
 
 const NAV = [
@@ -10,6 +10,8 @@ const NAV = [
   { id:'wallet', label:'Wallet', icon: Wallet },
   { id:'profile', label:'Profile', icon: User },
 ] as const;
+
+const ADMIN_NAV_ITEM = { id: 'admin', label: 'Admin', icon: LayoutDashboard } as const;
 
 export function AppShell({
   user, balance, view, setView, children
@@ -21,6 +23,8 @@ export function AppShell({
   onLogout: ()=>void,
   children: React.ReactNode
 }) {
+  const navItems = user.role === 'admin' ? [...NAV, ADMIN_NAV_ITEM] : NAV;
+
   return (
     <div className="app-safe-shell min-h-[100dvh]">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
@@ -53,7 +57,7 @@ export function AppShell({
       <div className="app-safe-bottom-nav fixed bottom-0 left-1/2 z-40 w-[min(430px,calc(100vw-1rem))] -translate-x-1/2 px-4">
         <div className="mb-2 rounded-[28px] border border-white/10 bg-[#111a30]/88 px-4 py-3 shadow-[0_-10px_40px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
           <div className="flex items-center justify-between gap-1">
-            {NAV.map((item) => {
+            {navItems.map((item) => {
               const Icon = item.icon;
               const active = view === item.id;
               return (

@@ -81,20 +81,22 @@ export function RegisterScreen({
   busy = false,
   initialValues,
 }: {
-  onNext:(payload:{ email: string; username: string; password: string })=>void,
+  onNext:(payload:{ email: string; username: string; password: string; referralCode?: string })=>void,
   onGoLogin:()=>void,
   busy?: boolean,
-  initialValues?: { email?: string; username?: string; password?: string },
+  initialValues?: { email?: string; username?: string; password?: string; referralCode?: string },
 }) {
   const [email,setEmail]=React.useState(initialValues?.email ?? '');
   const [username,setUsername]=React.useState(initialValues?.username ?? '');
   const [pw,setPw]=React.useState(initialValues?.password ?? '');
+  const [referralCode, setReferralCode] = React.useState(initialValues?.referralCode ?? '');
 
   React.useEffect(() => {
     setEmail(initialValues?.email ?? '');
     setUsername(initialValues?.username ?? '');
     setPw(initialValues?.password ?? '');
-  }, [initialValues?.email, initialValues?.password, initialValues?.username]);
+    setReferralCode(initialValues?.referralCode ?? '');
+  }, [initialValues?.email, initialValues?.password, initialValues?.referralCode, initialValues?.username]);
 
   return (
     <AuthShell>
@@ -104,12 +106,14 @@ export function RegisterScreen({
         <Field label="Email" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com"/>
         <Field label="Username" value={username} onChange={e=>setUsername(e.target.value)} placeholder="chesscat" />
         <Field label="Password" type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 8 characters"/>
+        <Field label="Referral code (optional)" value={referralCode} onChange={e=>setReferralCode(e.target.value.toUpperCase())} placeholder="FRIEND1234" />
         <Button
           className="w-full py-3.5 text-[15px]"
           onClick={()=>onNext({
             email: email || 'new@cerebrum.test',
             username: username || 'newplayer',
             password: pw || 'password',
+            referralCode: referralCode.trim() || undefined,
           })}
           disabled={busy}
         >

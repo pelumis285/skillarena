@@ -42,6 +42,10 @@ function upsertChallenge(list: Challenge[], next: Challenge) {
   return list.map((challenge) => challenge.id === next.id ? next : challenge);
 }
 
+function mockVisibleChallenges(user: User) {
+  return mockChallenges.filter((challenge) => isVisibleChallenge(challenge, user));
+}
+
 function invitedUsersFor(challenge: Challenge) {
   if (challenge.invitedUsers?.length) return challenge.invitedUsers;
   if (challenge.invitedUserId || challenge.invitedUserName) {
@@ -193,6 +197,8 @@ function ChallengeCard({
   challenge,
   user,
   busy,
+  actionsDisabled,
+  disabledActionLabel,
   onAccept,
   onOpenRoom,
   toast,
@@ -200,6 +206,8 @@ function ChallengeCard({
   challenge: Challenge;
   user: User;
   busy: boolean;
+  actionsDisabled: boolean;
+  disabledActionLabel: string;
   onAccept: (challenge: Challenge) => void;
   onOpenRoom: (challenge: Challenge) => void;
   toast: (message: string) => void;
@@ -313,16 +321,22 @@ function ChallengeCard({
           </div>
           {isMine ? (
             <div className="flex items-center gap-2">
-              <Button disabled={!canOpenCreatorRoom} onClick={() => onOpenRoom(challenge)}>
-                {!canOpenCreatorRoom ? 'Waiting for player' : challenge.game === 'scrabble' ? 'Open board' : 'Open room'}
+              <Button disabled={actionsDisabled || !canOpenCreatorRoom} onClick={() => onOpenRoom(challenge)}>
+                {actionsDisabled
+                  ? disabledActionLabel
+                  : !canOpenCreatorRoom
+                    ? 'Waiting for player'
+                    : challenge.game === 'scrabble'
+                      ? 'Open board'
+                      : 'Open room'}
               </Button>
               <Button variant="secondary" onClick={() => copyShareSummary(challenge, toast)}>
                 Share
               </Button>
             </div>
           ) : (
-            <Button disabled={busy} onClick={() => onAccept(challenge)}>
-              {busy ? 'Joining…' : 'Accept & play'}
+            <Button disabled={busy || actionsDisabled} onClick={() => onAccept(challenge)}>
+              {busy ? 'Joining…' : actionsDisabled ? disabledActionLabel : 'Accept & play'}
             </Button>
           )}
         </div>
@@ -353,7 +367,7 @@ export function ChallengeLobby({
 }) {
   const [openCreate, setOpenCreate] = React.useState(false);
   const [createSeed, setCreateSeed] = React.useState<ChallengeComposerIntent | null>(null);
-  const [challenges, setChallenges] = React.useState<Challenge[]>(() => mockChallenges.filter((challenge) => isVisibleChallenge(challenge, user)));
+  const [challenges, setChallenges] = React.useState<Challenge[]>(() => realtimeClient.isConfigured ? [] : mockVisibleChallenges(user));
   const [connectionState, setConnectionState] = React.useState<'local'|'connecting'|'online'>('local');
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
@@ -373,35 +387,45 @@ export function ChallengeLobby({
     async function connect() {
       if (!realtimeClient.isConfigured) {
         setConnectionState('local');
-        setChallenges(mockChallenges.filter((challenge) => isVisibleChallenge(challenge, user)));
+        setChallenges(mockVisibleChallenges(user));
         return;
       }
 
+      setChallenges([]);
       setConnectionState('connecting');
-      const connected = await realtimeClient.connect(user).catch(() => false);
-      if (disposed || !connected) {
-        if (!disposed) setConnectionState('local');
-        return;
+
+      while (!disposed) {
+        const connected = await realtimeClient.connect(user).catch(() => false);
+        if (disposed) return;
+
+        if (connected) {
+          setConnectionState('online');
+
+          const liveChallenges = await realtimeClient.listChallenges().catch(() => null);
+          if (!disposed) {
+            setChallenges(liveChallenges?.filter((challenge) => isVisibleChallenge(challenge, user)) ?? []);
+          }
+
+          cleanups.push(
+            realtimeClient.onChallenge('challenge:upsert', (challenge) => {
+              if (!isVisibleChallenge(challenge, user)) return;
+              setChallenges((current) => upsertChallenge(current, challenge));
+            }),
+          );
+
+          cleanups.push(
+            realtimeClient.onChallenge('invite:received', (challenge) => {
+              if (!isVisibleChallenge(challenge, user)) return;
+              setChallenges((current) => upsertChallenge(current, challenge));
+              toastEvent(`${challenge.creator.name} invited you to a ${GAME_META[challenge.game].short} table.`);
+            }),
+          );
+
+          return;
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, 2500));
       }
-
-      const liveChallenges = await realtimeClient.listChallenges().catch(() => null);
-      if (!disposed && liveChallenges) setChallenges(liveChallenges);
-      if (!disposed) setConnectionState('online');
-
-      cleanups.push(
-        realtimeClient.onChallenge('challenge:upsert', (challenge) => {
-          if (!isVisibleChallenge(challenge, user)) return;
-          setChallenges((current) => upsertChallenge(current, challenge));
-        }),
-      );
-
-      cleanups.push(
-        realtimeClient.onChallenge('invite:received', (challenge) => {
-          if (!isVisibleChallenge(challenge, user)) return;
-          setChallenges((current) => upsertChallenge(current, challenge));
-          toastEvent(`${challenge.creator.name} invited you to a ${GAME_META[challenge.game].short} table.`);
-        }),
-      );
     }
 
     connect();
@@ -416,6 +440,12 @@ export function ChallengeLobby({
     () => [...challenges.filter((challenge) => isVisibleChallenge(challenge, user))].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)),
     [challenges, user],
   );
+  const liveConfigured = realtimeClient.isConfigured;
+  const liveActionsBlocked = liveConfigured && connectionState !== 'online';
+  const liveActionLabel = connectionState === 'connecting' ? 'Connecting…' : 'Live sync…';
+  const liveBlockedMessage = connectionState === 'connecting'
+    ? 'Still connecting to the live server. Give it a moment, then try again.'
+    : 'The live server is not ready yet. Please wait a moment and try again.';
 
   const myChallenges = React.useMemo(
     () => visibleChallenges.filter((challenge) => challenge.creator.id === user.id),
@@ -439,6 +469,10 @@ export function ChallengeLobby({
 
   const handleAccept = React.useCallback(async (challenge: Challenge) => {
     try {
+      if (realtimeClient.isConfigured && connectionState !== 'online') {
+        toast(liveBlockedMessage);
+        return;
+      }
       setBusyId(challenge.id);
       if (connectionState === 'online') {
         const accepted = await realtimeClient.acceptChallenge(challenge.id, user);
@@ -455,7 +489,7 @@ export function ChallengeLobby({
     } finally {
       setBusyId(null);
     }
-  }, [connectionState, onAccept, toast, user]);
+  }, [connectionState, liveBlockedMessage, onAccept, toast, user]);
 
   const handleOpenRoom = React.useCallback((challenge: Challenge) => {
     onAccept(challenge);
@@ -463,6 +497,11 @@ export function ChallengeLobby({
   }, [onAccept, toast]);
 
   const handleCreate = React.useCallback(async (draft: ChallengeDraft, options?: { shareAfterCreate?: boolean }) => {
+    if (realtimeClient.isConfigured && connectionState !== 'online') {
+      toast(liveBlockedMessage);
+      return false;
+    }
+
     const invitedUsers = draft.invitedUsers?.filter((invite) => invite.id || invite.name) ?? [];
     const invitedEmails = draft.invitedEmails?.map((email) => email.trim().toLowerCase()).filter(Boolean) ?? [];
     const primaryInvite = invitedUsers[0];
@@ -504,7 +543,7 @@ export function ChallengeLobby({
       if (created?.game === 'ludo') {
         onAccept(created);
       }
-      return;
+      return true;
     }
 
     setChallenges((current) => upsertChallenge(current, challengePayload));
@@ -517,7 +556,8 @@ export function ChallengeLobby({
     if (options?.shareAfterCreate) {
       await copyShareSummary(challengePayload, toast);
     }
-  }, [connectionState, onAccept, toast, user]);
+    return true;
+  }, [connectionState, liveBlockedMessage, onAccept, toast, user]);
 
   return (
     <div className="space-y-6 text-white">
@@ -537,7 +577,7 @@ export function ChallengeLobby({
             </div>
             <div className="flex items-center gap-2">
               {onBack && <Button variant="secondary" onClick={onBack}>Back to arena</Button>}
-              <Button onClick={() => launchComposer(null)}>
+              <Button disabled={liveActionsBlocked} onClick={() => launchComposer(null)}>
                 <Plus className="h-4 w-4" />
                 Create challenge
               </Button>
@@ -545,11 +585,22 @@ export function ChallengeLobby({
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            {connectionState === 'online' && <Badge variant="emerald">Live server</Badge>}
-            {connectionState === 'connecting' && <Badge variant="gold">Connecting…</Badge>}
-            {connectionState === 'local' && <Badge variant="default">Local preview</Badge>}
+            {liveConfigured ? (
+              connectionState === 'online'
+                ? <Badge variant="emerald">Live server</Badge>
+                : connectionState === 'connecting'
+                  ? <Badge variant="gold">Connecting…</Badge>
+                  : <Badge variant="default">Live server unavailable</Badge>
+            ) : (
+              <Badge variant="default">Local preview</Badge>
+            )}
             <Badge variant="purple">{mockOnlinePlayers.length} players online</Badge>
           </div>
+          {liveActionsBlocked && (
+            <div className="mt-3 text-[12.8px] text-amber-100/88">
+              Waiting for the live server to finish syncing before rooms can be posted or joined.
+            </div>
+          )}
 
           <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <LobbyStat label="Open rooms" value={String(visibleChallenges.length)} icon={<Swords className="h-4 w-4" />} />
@@ -561,8 +612,9 @@ export function ChallengeLobby({
           <div className="mt-5 grid gap-2 sm:grid-cols-3">
             <button
               type="button"
+              disabled={liveActionsBlocked}
               onClick={() => launchComposer({ game: 'chess', inviteScope: 'public', stake: 10 })}
-              className="rounded-[20px] border border-white/10 bg-white/[0.05] px-4 py-3 text-left transition hover:bg-white/[0.09]"
+              className="rounded-[20px] border border-white/10 bg-white/[0.05] px-4 py-3 text-left transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-55"
             >
               <div className="text-[12px] uppercase tracking-[0.18em] text-slate-500">Quick action</div>
               <div className="mt-1 font-[760] text-white">Post public chess</div>
@@ -570,8 +622,9 @@ export function ChallengeLobby({
             </button>
             <button
               type="button"
+              disabled={liveActionsBlocked}
               onClick={() => launchComposer({ game: 'words', inviteScope: 'private', stake: 5 })}
-              className="rounded-[20px] border border-white/10 bg-white/[0.05] px-4 py-3 text-left transition hover:bg-white/[0.09]"
+              className="rounded-[20px] border border-white/10 bg-white/[0.05] px-4 py-3 text-left transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-55"
             >
               <div className="text-[12px] uppercase tracking-[0.18em] text-slate-500">Quick action</div>
               <div className="mt-1 font-[760] text-white">Invite a friend</div>
@@ -579,8 +632,9 @@ export function ChallengeLobby({
             </button>
             <button
               type="button"
+              disabled={liveActionsBlocked}
               onClick={() => launchComposer({ game: 'ludo', inviteScope: 'public', stake: 4 })}
-              className="rounded-[20px] border border-white/10 bg-white/[0.05] px-4 py-3 text-left transition hover:bg-white/[0.09]"
+              className="rounded-[20px] border border-white/10 bg-white/[0.05] px-4 py-3 text-left transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-55"
             >
               <div className="text-[12px] uppercase tracking-[0.18em] text-slate-500">Quick action</div>
               <div className="mt-1 font-[760] text-white">Open Ludo room</div>
@@ -599,6 +653,8 @@ export function ChallengeLobby({
                 challenge={challenge}
                 user={user}
                 busy={busyId === challenge.id}
+                actionsDisabled={liveActionsBlocked}
+                disabledActionLabel={liveActionLabel}
                 onAccept={handleAccept}
                 onOpenRoom={handleOpenRoom}
                 toast={toast}
@@ -617,6 +673,8 @@ export function ChallengeLobby({
                 challenge={challenge}
                 user={user}
                 busy={busyId === challenge.id}
+                actionsDisabled={liveActionsBlocked}
+                disabledActionLabel={liveActionLabel}
                 onAccept={handleAccept}
                 onOpenRoom={handleOpenRoom}
                 toast={toast}
@@ -635,6 +693,8 @@ export function ChallengeLobby({
                 challenge={challenge}
                 user={user}
                 busy={busyId === challenge.id}
+                actionsDisabled={liveActionsBlocked}
+                disabledActionLabel={liveActionLabel}
                 onAccept={handleAccept}
                 onOpenRoom={handleOpenRoom}
                 toast={toast}
@@ -651,7 +711,7 @@ export function ChallengeLobby({
                 <div className="font-[760] text-white">No public rooms are live right now.</div>
                 <div className="mt-1 text-[13px] leading-6 text-slate-400">Post the first table and it will appear here for everyone in the lobby.</div>
                 <div className="mt-4">
-                  <Button onClick={() => launchComposer({ inviteScope: 'public' })}>Post a public room</Button>
+                  <Button disabled={liveActionsBlocked} onClick={() => launchComposer({ inviteScope: 'public' })}>Post a public room</Button>
                 </div>
               </div>
             </div>
@@ -685,10 +745,14 @@ export function ChallengeLobby({
           setCreateSeed(null);
         }}
         onCreate={async (draft, options) => {
-          await handleCreate(draft, options);
+          const created = await handleCreate(draft, options);
+          if (!created) return false;
           setOpenCreate(false);
           setCreateSeed(null);
+          return true;
         }}
+        actionsDisabled={liveActionsBlocked}
+        disabledMessage={liveBlockedMessage}
         toast={toast}
       />
     </div>
@@ -701,13 +765,17 @@ function CreateChallengeModal({
   initialIntent,
   onClose,
   onCreate,
+  actionsDisabled,
+  disabledMessage,
   toast,
 }: {
   user: User;
   open: boolean;
   initialIntent?: ChallengeComposerIntent | null;
   onClose: () => void;
-  onCreate: (challenge: ChallengeDraft, options?: { shareAfterCreate?: boolean }) => Promise<void>;
+  onCreate: (challenge: ChallengeDraft, options?: { shareAfterCreate?: boolean }) => Promise<boolean>;
+  actionsDisabled: boolean;
+  disabledMessage: string;
   toast: (message: string) => void;
 }) {
   const [game, setGame] = React.useState<GameId>('chess');
@@ -877,6 +945,11 @@ function CreateChallengeModal({
     : 'Scrabble Social quick play currently opens as a heads-up board. You can still post it publicly, invite by username, and share the challenge link or code.';
 
   const submitChallenge = async (shareAfterCreate = false) => {
+    if (actionsDisabled) {
+      toast(disabledMessage);
+      return;
+    }
+
     await onCreate({
       game,
       stake,
@@ -894,9 +967,6 @@ function CreateChallengeModal({
       invitedEmails: inviteEmails,
       inviteCode,
     }, { shareAfterCreate });
-    if (shareAfterCreate) {
-      toast('Challenge posted and ready to share.');
-    }
   };
 
   return (
@@ -926,6 +996,12 @@ function CreateChallengeModal({
               <Pill>{money(stake)} stake</Pill>
             </div>
             <div className="mt-3 leading-6">{quickPlayNote}</div>
+          </div>
+        )}
+
+        {actionsDisabled && (
+          <div className="rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-[12.8px] text-amber-900">
+            {disabledMessage}
           </div>
         )}
 
@@ -1083,6 +1159,7 @@ function CreateChallengeModal({
         <div className="grid gap-2 pt-1 sm:grid-cols-3">
           <Button
             className="justify-center"
+            disabled={actionsDisabled}
             onClick={async () => submitChallenge(false)}
           >
             {directInviteCount
@@ -1091,7 +1168,7 @@ function CreateChallengeModal({
                 ? 'Create private challenge'
                 : 'Post challenge'}
           </Button>
-          <Button variant="secondary" onClick={async () => submitChallenge(true)}>Post & share</Button>
+          <Button variant="secondary" disabled={actionsDisabled} onClick={async () => submitChallenge(true)}>Post & share</Button>
           <Button variant="soft" onClick={onClose}>Cancel</Button>
         </div>
       </div>

@@ -4,8 +4,25 @@ import express from 'express';
 import { Server } from 'socket.io';
 import { createLudoMatchState, moveLudoMatch, rollLudoMatch } from '../src/lib/ludoEngine.ts';
 import { mockChallenges } from '../src/lib/mock.ts';
-import type { Challenge, ChallengeParticipant, ChallengeRoomState, GameId, LudoMatchState, LudoSeats } from '../src/lib/types.ts';
-import { createStoredUser, loadDatabase, saveDatabase, toPublicUser, verifyPassword, type StoredUser } from './store.ts';
+import type { Challenge, ChallengeParticipant, ChallengeRoomState, GameId, LudoMatchState, LudoSeats, MatchRecord, UserRole } from '../src/lib/types.ts';
+import {
+  REFERRAL_REWARD_AMOUNT,
+  REFERRAL_REWARD_POINTS,
+  buildAdminOverviewSnapshot,
+  buildUserProfileSnapshot,
+  createReferralRecord,
+  createStoredMatchRecord,
+  createStoredUser,
+  createStoredWalletTransaction,
+  loadDatabase,
+  saveDatabase,
+  toPublicUser,
+  verifyPassword,
+  type StoredMatchRecord,
+  type StoredReferralRecord,
+  type StoredUser,
+  type StoredWalletTransaction,
+} from './store.ts';
 
 type PlayerIdentity = {
   id: string;
@@ -58,6 +75,7 @@ type RegisterPayload = {
   password?: string;
   displayName?: string;
   avatar?: string;
+  referralCode?: string;
 };
 
 type LoginPayload = {
@@ -65,28 +83,61 @@ type LoginPayload = {
   password?: string;
 };
 
+type WalletActionPayload = {
+  userId?: string;
+  amount?: number;
+  description?: string;
+};
+
+type RecordMatchPayload = {
+  userId?: string;
+  game?: GameId;
+  result?: MatchRecord['result'];
+  score?: string;
+  stake?: number;
+  payout?: number;
+  opponentName?: string;
+  opponentAvatar?: string;
+  closingBalance?: number;
+};
+
 function resolveAllowedOrigins() {
+  const defaults = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:4173',
+    'http://127.0.0.1:4173',
+    'capacitor://localhost',
+    'ionic://localhost',
+    'http://localhost',
+    'http://127.0.0.1',
+  ];
   const configured = process.env.ALLOWED_ORIGINS
     ?.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  if (configured?.length) {
-    return configured;
-  }
-
-  return [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'capacitor://localhost',
-    'http://localhost',
-  ];
+  return configured?.length ? [...new Set([...defaults, ...configured])] : defaults;
 }
 
 const allowedOrigins = resolveAllowedOrigins();
 
 function isAllowedOrigin(origin?: string | null) {
   if (!origin) return true;
+  try {
+    const parsed = new URL(origin);
+    if (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+      && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')
+    ) {
+      return true;
+    }
+    if ((parsed.protocol === 'capacitor:' || parsed.protocol === 'ionic:') && parsed.hostname === 'localhost') {
+      return true;
+    }
+  } catch {
+    // Fall through to exact-match lookup below.
+  }
   return allowedOrigins.includes(origin);
 }
 
@@ -156,6 +207,9 @@ function buildSeedChallenges(source: Challenge[]) {
 const database = loadDatabase();
 const userStore = new Map<string, StoredUser>(database.users.map((user) => [user.id, user]));
 const challengeStore = new Map<string, Challenge>(buildSeedChallenges(database.challenges.length ? database.challenges : mockChallenges).map((challenge) => [challenge.id, challenge]));
+const walletStore = [...database.walletTransactions];
+const matchStore = [...database.matchRecords];
+const referralStore = [...database.referralRecords];
 const roomStore = new Map<string, ChallengeRoomState>();
 const ludoStore = new Map<string, LudoMatchState>();
 const presenceStore = new Map<string, number>();
@@ -169,6 +223,9 @@ function persistDatabase() {
   saveDatabase({
     users: [...userStore.values()],
     challenges: [...challengeStore.values()],
+    walletTransactions: walletStore,
+    matchRecords: matchStore,
+    referralRecords: referralStore,
   });
 }
 
@@ -181,6 +238,8 @@ function publicUserSummary(user: StoredUser) {
     rating: user.rating,
     tier: user.tier,
     joinedAt: user.joinedAt,
+    role: user.role,
+    referralCode: user.referralCode,
     online: (presenceStore.get(user.id) ?? 0) > 0,
   };
 }
@@ -205,6 +264,102 @@ function listChallengesFor(userId?: string) {
   return [...challengeStore.values()]
     .filter((challenge) => isVisibleToUser(challenge, userId))
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+}
+
+function applyWalletMutation(user: StoredUser, entry: {
+  amount: number;
+  type: StoredWalletTransaction['type'];
+  description: string;
+  game?: GameId;
+  status?: StoredWalletTransaction['status'];
+}) {
+  user.balance = Number((user.balance + entry.amount).toFixed(2));
+  if (entry.type === 'deposit') {
+    user.totalDeposited = Number((user.totalDeposited + Math.max(entry.amount, 0)).toFixed(2));
+  }
+  if (entry.type === 'withdrawal') {
+    user.totalWithdrawn = Number((user.totalWithdrawn + Math.abs(entry.amount)).toFixed(2));
+  }
+  if (entry.type === 'referral_bonus') {
+    user.referralEarnings = Number((user.referralEarnings + Math.max(entry.amount, 0)).toFixed(2));
+  }
+  const tx = createStoredWalletTransaction({
+    userId: user.id,
+    balanceAfter: user.balance,
+    amount: entry.amount,
+    type: entry.type,
+    description: entry.description,
+    game: entry.game,
+    status: entry.status,
+  });
+  walletStore.unshift(tx);
+  userStore.set(user.id, user);
+  return tx;
+}
+
+function recordMatchForUser(user: StoredUser, payload: Required<Pick<RecordMatchPayload, 'game' | 'result' | 'score' | 'stake' | 'payout'>> & {
+  opponentName?: string;
+  opponentAvatar?: string;
+  closingBalance?: number;
+}) {
+  if (Number.isFinite(payload.closingBalance) && payload.closingBalance! >= 0) {
+    user.balance = Number(payload.closingBalance!.toFixed(2));
+  }
+  user.totalMatches += 1;
+  user.totalWagered = Number((user.totalWagered + payload.stake).toFixed(2));
+  user.totalPayouts = Number((user.totalPayouts + payload.payout).toFixed(2));
+  if (payload.result === 'win') user.totalWins += 1;
+  if (payload.result === 'loss') user.totalLosses += 1;
+  if (payload.result === 'draw') user.totalDraws += 1;
+  userStore.set(user.id, user);
+
+  const record = createStoredMatchRecord({
+    userId: user.id,
+    game: payload.game,
+    result: payload.result,
+    score: payload.score,
+    stake: payload.stake,
+    payout: payload.payout,
+    opponent: {
+      name: payload.opponentName?.trim() || 'Arena rival',
+      avatar: payload.opponentAvatar?.trim() || '🎯',
+    },
+  });
+  matchStore.unshift(record);
+
+  if (payload.stake > 0) {
+    walletStore.unshift(createStoredWalletTransaction({
+      userId: user.id,
+      balanceAfter: user.balance,
+      type: 'wager',
+      amount: Number((-payload.stake).toFixed(2)),
+      description: `${payload.game} stake locked`,
+      game: payload.game,
+    }));
+  }
+  if (payload.payout > 0) {
+    walletStore.unshift(createStoredWalletTransaction({
+      userId: user.id,
+      balanceAfter: user.balance,
+      type: payload.result === 'draw' ? 'refund' : 'win',
+      amount: payload.payout,
+      description: payload.result === 'draw' ? `${payload.game} draw refund` : `${payload.game} payout`,
+      game: payload.game,
+    }));
+  }
+
+  return record;
+}
+
+function requireUser(userId?: string | null) {
+  if (!userId) return null;
+  return userStore.get(userId) ?? null;
+}
+
+function requireAdmin(userId?: string | null) {
+  const user = requireUser(userId);
+  if (!user || user.role !== 'admin') return null;
+  return user;
 }
 
 function emitChallenge(io: Server, challenge: Challenge) {
@@ -272,6 +427,9 @@ app.get('/health', (_req, res) => {
     onlineUsers: presenceStore.size,
     rooms: roomStore.size,
     challenges: challengeStore.size,
+    walletTransactions: walletStore.length,
+    matchRecords: matchStore.length,
+    referrals: referralStore.length,
     time: new Date().toISOString(),
   });
 });
@@ -283,6 +441,7 @@ app.post('/api/auth/register', (req, res) => {
   const password = payload.password?.trim() ?? '';
   const displayName = payload.displayName?.trim() ?? '';
   const avatar = payload.avatar?.trim() ?? '';
+  const referralCode = payload.referralCode?.trim().toUpperCase() ?? '';
 
   if (!email || !username || !password || !displayName || !avatar) {
     res.status(400).json({ ok: false, error: 'Complete every registration field.' });
@@ -300,6 +459,13 @@ app.post('/api/auth/register', (req, res) => {
     res.status(409).json({ ok: false, error: 'That username is already taken.' });
     return;
   }
+  const referrer = referralCode
+    ? [...userStore.values()].find((candidate) => candidate.referralCode === referralCode)
+    : undefined;
+  if (referralCode && !referrer) {
+    res.status(404).json({ ok: false, error: 'Referral code not found.' });
+    return;
+  }
 
   const user = createStoredUser({
     email,
@@ -307,9 +473,24 @@ app.post('/api/auth/register', (req, res) => {
     password,
     displayName,
     avatar,
+    referredByCode: referrer?.referralCode ?? null,
+    role: userStore.size === 0 ? 'admin' : undefined,
   });
 
   userStore.set(user.id, user);
+  if (referrer) {
+    referrer.referralPoints += REFERRAL_REWARD_POINTS;
+    applyWalletMutation(referrer, {
+      amount: REFERRAL_REWARD_AMOUNT,
+      type: 'referral_bonus',
+      description: `Referral bonus for ${user.displayName}`,
+    });
+    referralStore.unshift(createReferralRecord({
+      referrerUserId: referrer.id,
+      referredUserId: user.id,
+      code: referrer.referralCode,
+    }));
+  }
   persistDatabase();
 
   res.json({
@@ -358,6 +539,22 @@ app.get('/api/wallet/:userId', (req, res) => {
   });
 });
 
+app.get('/api/wallet/:userId/transactions', (req, res) => {
+  const user = userStore.get(req.params.userId);
+  if (!user) {
+    res.status(404).json({ ok: false, error: 'User not found.' });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    transactions: walletStore
+      .filter((entry) => entry.userId === user.id)
+      .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
+      .map(({ userId: _userId, balanceAfter: _balanceAfter, ...entry }) => entry),
+  });
+});
+
 app.patch('/api/users/:userId/balance', (req, res) => {
   const user = userStore.get(req.params.userId);
   const nextBalance = Number(req.body?.balance);
@@ -378,6 +575,148 @@ app.patch('/api/users/:userId/balance', (req, res) => {
   res.json({
     ok: true,
     balance: user.balance,
+  });
+});
+
+app.get('/api/users/:userId/profile', (req, res) => {
+  const user = userStore.get(req.params.userId);
+  if (!user) {
+    res.status(404).json({ ok: false, error: 'User not found.' });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    profile: buildUserProfileSnapshot({
+      user,
+      walletTransactions: walletStore,
+      matchRecords: matchStore,
+      referralRecords: referralStore,
+      usersById: new Map([...userStore.values()].map((entry) => [entry.id, entry])),
+    }),
+  });
+});
+
+app.post('/api/wallet/deposit', (req, res) => {
+  const payload = req.body as WalletActionPayload;
+  const user = requireUser(payload.userId);
+  const amount = Number(payload.amount);
+  if (!user) {
+    res.status(404).json({ ok: false, error: 'User not found.' });
+    return;
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    res.status(400).json({ ok: false, error: 'Enter a valid deposit amount.' });
+    return;
+  }
+
+  applyWalletMutation(user, {
+    amount,
+    type: 'deposit',
+    description: payload.description?.trim() || 'Demo deposit',
+  });
+  persistDatabase();
+
+  res.json({
+    ok: true,
+    balance: user.balance,
+    transactions: walletStore
+      .filter((entry) => entry.userId === user.id)
+      .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
+      .slice(0, 8)
+      .map(({ userId: _userId, balanceAfter: _balanceAfter, ...entry }) => entry),
+  });
+});
+
+app.post('/api/wallet/withdraw', (req, res) => {
+  const payload = req.body as WalletActionPayload;
+  const user = requireUser(payload.userId);
+  const amount = Number(payload.amount);
+  if (!user) {
+    res.status(404).json({ ok: false, error: 'User not found.' });
+    return;
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    res.status(400).json({ ok: false, error: 'Enter a valid withdrawal amount.' });
+    return;
+  }
+  if (amount > user.balance) {
+    res.status(400).json({ ok: false, error: 'Insufficient balance for this withdrawal.' });
+    return;
+  }
+
+  applyWalletMutation(user, {
+    amount: -amount,
+    type: 'withdrawal',
+    description: payload.description?.trim() || 'Bank withdrawal',
+    status: 'pending',
+  });
+  persistDatabase();
+
+  res.json({
+    ok: true,
+    balance: user.balance,
+    transactions: walletStore
+      .filter((entry) => entry.userId === user.id)
+      .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
+      .slice(0, 8)
+      .map(({ userId: _userId, balanceAfter: _balanceAfter, ...entry }) => entry),
+  });
+});
+
+app.post('/api/matches/record', (req, res) => {
+  const payload = req.body as RecordMatchPayload;
+  const user = requireUser(payload.userId);
+  if (!user) {
+    res.status(404).json({ ok: false, error: 'User not found.' });
+    return;
+  }
+  if (!payload.game || !payload.result || !payload.score) {
+    res.status(400).json({ ok: false, error: 'Match details are incomplete.' });
+    return;
+  }
+  const stake = Number(payload.stake ?? 0);
+  const payout = Number(payload.payout ?? 0);
+  if (!Number.isFinite(stake) || stake < 0 || !Number.isFinite(payout) || payout < 0) {
+    res.status(400).json({ ok: false, error: 'Stake and payout must be valid positive numbers.' });
+    return;
+  }
+
+  recordMatchForUser(user, {
+    game: payload.game,
+    result: payload.result,
+    score: payload.score,
+    stake,
+    payout,
+    opponentName: payload.opponentName,
+    opponentAvatar: payload.opponentAvatar,
+    closingBalance: payload.closingBalance,
+  });
+  persistDatabase();
+
+  res.json({
+    ok: true,
+    balance: user.balance,
+  });
+});
+
+app.get('/api/admin/overview', (req, res) => {
+  const viewer = requireAdmin(typeof req.query.userId === 'string' ? req.query.userId : undefined);
+  if (!viewer) {
+    res.status(403).json({ ok: false, error: 'Admin access is required.' });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    overview: buildAdminOverviewSnapshot({
+      users: [...userStore.values()],
+      walletTransactions: walletStore,
+      matchRecords: matchStore,
+      referralRecords: referralStore,
+      onlineUserIds: new Set(presenceStore.keys()),
+    }),
+    viewer: toPublicUser(viewer),
   });
 });
 

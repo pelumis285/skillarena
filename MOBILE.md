@@ -89,14 +89,14 @@ The iOS bundle ID is intentionally different right now because it is the signed 
 
 - Render deployment blueprint:
   [render.yaml](/Applications/Desktop/The App/skill-based-gaming-platform/render.yaml)
-  This sets up the shared beta backend with a persistent disk path for `beta-db.json`.
+  This sets up the shared beta backend. For persistent SQLite storage on Render, pair it with a paid persistent disk and `SKILLARENA_DB_PATH`.
 
 - Remote beta release steps:
   [BETA_RELEASE.md](/Applications/Desktop/The App/skill-based-gaming-platform/BETA_RELEASE.md)
 
-- Shared beta data is stored locally in:
-  [server/data/beta-db.json](/Applications/Desktop/The App/skill-based-gaming-platform/server/data/beta-db.json)
-  This now persists registered users, balances, and posted challenges across restarts.
+- Shared beta data is now stored locally in SQLite at:
+  `server/data/skillarena.sqlite`
+  The server automatically imports legacy `beta-db.json` data the first time it starts with the new store.
 
 ## App Test Checklist
 
@@ -133,7 +133,7 @@ Use this as the quickest smoke pass before sharing a build:
 - Ludo live match syncing now works through the realtime server, but active matches are still held in server memory and can reset if the backend restarts during a game.
 - WordForge and Scrabble currently play as 2-player boards even if you attach multiple invites. Multiple invites are still useful because the first accepted player becomes the live opponent.
 - Email referrals are stored on the challenge, but automatic email delivery is not wired yet.
-- The wallet is now shared per beta account, but transactions and match history are still mostly presentation/demo data on the client.
+- The wallet, transaction history, referral history, and match history now come from the shared backend database.
 
 ## Typical Workflow
 

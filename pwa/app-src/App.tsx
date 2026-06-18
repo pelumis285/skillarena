@@ -1,11 +1,12 @@
 import React from 'react';
-import type { User, GameId, Challenge } from './lib/types';
+import type { User, GameId, Challenge, MatchRecord } from './lib/types';
 import { LoginScreen, RegisterScreen, VerifyScreen, OnboardScreen } from './components/AuthScreens';
 import { AppShell } from './components/Layout';
 import { Dashboard, LeaderboardView } from './components/Dashboard';
 import { ChallengeLobby } from './components/ChallengeLobby';
 import { WalletView } from './components/WalletView';
 import { ProfileView } from './components/ProfileView';
+import { AdminDashboard } from './components/AdminDashboard';
 import { WordForge } from './games/WordForge';
 import { ChessArena } from './games/ChessArena';
 import { LudoRush } from './games/LudoRush';
@@ -16,7 +17,7 @@ import { money } from './lib/utils';
 import { betaApi } from './lib/api';
 
 type AuthState = 'login' | 'register' | 'verify' | 'onboard' | 'app';
-type AppView = 'dashboard' | 'challenges' | 'leaderboard' | 'wallet' | 'profile';
+type AppView = 'dashboard' | 'challenges' | 'leaderboard' | 'wallet' | 'profile' | 'admin';
 type ChallengeComposerIntent = {
   game?: GameId;
   inviteScope?: 'public' | 'private';
@@ -28,13 +29,14 @@ type RegistrationDraft = {
   email: string;
   username: string;
   password: string;
+  referralCode?: string;
 };
 
 const DEFAULT_USER: User = {
   id: 'u_me',
   email: 'player@cerebrum.test',
-  username: 'archer',
-  displayName: 'Archer',
+  username: 'playerone',
+  displayName: 'Player One',
   avatar: '🦊',
   rating: 1642,
   tier: 'Silver',
@@ -58,6 +60,7 @@ export default function App() {
     const b = localStorage.getItem('cerebrum_balance');
     return b ? parseFloat(b) : 84.30;
   });
+  const [dataVersion, setDataVersion] = React.useState(0);
   const [view, setView] = React.useState<AppView>('dashboard');
   const [challengeIntent, setChallengeIntent] = React.useState<ChallengeComposerIntent | null>(null);
   const [claimedMissionIds, setClaimedMissionIds] = React.useState<string[]>(() => {
@@ -86,9 +89,17 @@ export default function App() {
   React.useEffect(()=>{ localStorage.setItem('cerebrum_balance', String(balance)); }, [balance]);
   React.useEffect(()=>{ localStorage.setItem('cerebrum_claimed_missions', JSON.stringify(claimedMissionIds)); }, [claimedMissionIds]);
   const lastRemoteBalanceRef = React.useRef<number | null>(null);
+  const bumpDataVersion = React.useCallback(() => {
+    setDataVersion((current) => current + 1);
+  }, []);
+
+  const commitRemoteBalance = React.useCallback((nextBalance: number) => {
+    setBalance(nextBalance);
+    lastRemoteBalanceRef.current = nextBalance;
+  }, []);
 
   React.useEffect(() => {
-    if (authState !== 'app' || !betaApi.isConfigured || !user.id || user.id === DEFAULT_USER.id) return;
+    if (authState !== 'app' || !betaApi.isConfigured || !user.id || user.id === DEFAULT_USER.id || !!game) return;
     if (lastRemoteBalanceRef.current === balance) return;
 
     const syncHandle = window.setTimeout(() => {
@@ -102,7 +113,7 @@ export default function App() {
     }, 250);
 
     return () => window.clearTimeout(syncHandle);
-  }, [authState, balance, user.id]);
+  }, [authState, balance, game, user.id]);
 
   React.useEffect(() => {
     if (authState !== 'app' || !betaApi.isConfigured || !user.id || user.id === DEFAULT_USER.id) return;
@@ -135,13 +146,14 @@ export default function App() {
 
   const finishAuth = React.useCallback((nextUser: User, nextBalance: number, message: string) => {
     setUser(nextUser);
-    setBalance(nextBalance);
+    commitRemoteBalance(nextBalance);
     setEmail(nextUser.email);
-    lastRemoteBalanceRef.current = nextBalance;
     localStorage.setItem('cerebrum_auth','1');
     setAuthState('app');
+    setView('dashboard');
+    bumpDataVersion();
     toast(message);
-  }, []);
+  }, [bumpDataVersion, commitRemoteBalance]);
 
   const handleLogin = async ({ email: nextEmail, password }: { email: string; password: string }) => {
     setEmail(nextEmail);
@@ -191,6 +203,7 @@ export default function App() {
         password: registrationDraft.password,
         displayName: profile.displayName,
         avatar: profile.avatar,
+        referralCode: registrationDraft.referralCode,
       });
       finishAuth(session.user, session.balance, 'Account ready. Welcome credits added!');
       setRegistrationDraft(null);
@@ -199,6 +212,8 @@ export default function App() {
       if (/already registered|already taken|complete every/i.test(message)) {
         setAuthState('register');
         toast(`${message} Update your details and try again.`);
+      } else if (/live server|waking up|reach the live server/i.test(message)) {
+        toast(`${message} Your player card is still saved here, so you can tap Enter the Arena again in a moment.`);
       } else {
         toast(message);
       }
@@ -265,9 +280,48 @@ export default function App() {
 
   const finishGame = (result:{score:number, won:boolean, payout:number, msg?:string, stake?:number}) => {
     if(!game) return;
-    const payout = result.payout;
-    if (payout > 0) setBalance(b=>b+payout);
-    setResultModal({ game: game.id, ...result, stake: result.stake ?? game.stake });
+    const completedGame = game;
+    const stake = result.stake ?? completedGame.stake;
+    const payout = Number((result.payout ?? 0).toFixed(2));
+    const closingBalance = Number((balance + payout).toFixed(2));
+    const lowerMessage = result.msg?.toLowerCase() ?? '';
+    const matchResult: MatchRecord['result'] = result.won ? 'win' : lowerMessage.includes('draw') ? 'draw' : 'loss';
+    const opponentFromParticipants = completedGame.challenge?.participants?.find((participant) => participant.id !== user.id);
+    const opponent = opponentFromParticipants
+      ? { name: opponentFromParticipants.name, avatar: opponentFromParticipants.avatar }
+      : completedGame.challenge?.creator.id && completedGame.challenge.creator.id !== user.id
+        ? { name: completedGame.challenge.creator.name, avatar: completedGame.challenge.creator.avatar }
+        : {
+            name: completedGame.challenge ? 'Arena rival' : 'Computer',
+            avatar: completedGame.challenge ? '🎯' : '🤖',
+          };
+
+    if (payout > 0) {
+      commitRemoteBalance(closingBalance);
+    }
+
+    if (betaApi.isConfigured && user.id !== DEFAULT_USER.id) {
+      betaApi.recordMatch({
+        userId: user.id,
+        game: completedGame.id,
+        result: matchResult,
+        score: String(result.score),
+        stake,
+        payout,
+        opponentName: opponent.name,
+        opponentAvatar: opponent.avatar,
+        closingBalance,
+      })
+        .then((remoteBalance) => {
+          commitRemoteBalance(remoteBalance);
+          bumpDataVersion();
+        })
+        .catch(() => {
+          toast('Match finished, but live stat sync could not be confirmed.');
+        });
+    }
+
+    setResultModal({ game: completedGame.id, ...result, payout, stake });
     setGame(null);
   };
 
@@ -333,8 +387,9 @@ export default function App() {
         )}
         {view==='challenges' && <ChallengeLobby user={user} onAccept={acceptChallenge} onBack={() => setView('dashboard')} toast={toast} launchIntent={challengeIntent} onLaunchIntentHandled={() => setChallengeIntent(null)} />}
         {view==='leaderboard' && <LeaderboardView />}
-        {view==='wallet' && <WalletView balance={balance} setBalance={setBalance} toast={toast} />}
-        {view==='profile' && <ProfileView user={user} onLogout={handleLogout} />}
+        {view==='wallet' && <WalletView user={user} balance={balance} setBalance={commitRemoteBalance} toast={toast} refreshKey={dataVersion} onRemoteMutation={bumpDataVersion} />}
+        {view==='profile' && <ProfileView user={user} balance={balance} refreshKey={dataVersion} onLogout={handleLogout} />}
+        {view==='admin' && <AdminDashboard user={user} refreshKey={dataVersion} />}
       </AppShell>
 
       <Modal open={!!resultModal} onClose={()=>setResultModal(null)} title={resultModal?.won ? 'You won!' : resultModal?.msg?.includes('Draw') ? 'Draw' : 'Game finished'} maxWidth="max-w-md">

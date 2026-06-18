@@ -9,8 +9,8 @@ type PlayerIdentity = {
 };
 
 type ChallengeEvent = 'challenge:upsert' | 'invite:received';
-type RoomEvent = 'room:state';
-type LudoEvent = 'ludo:state';
+const CONNECT_TIMEOUT_MS = 15000;
+const ACK_TIMEOUT_MS = 6000;
 
 function resolveRealtimeUrl() {
   if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_REALTIME_URL) {
@@ -38,6 +38,7 @@ function toIdentity(user: User): PlayerIdentity {
 class RealtimeClient {
   private socket: Socket | null = null;
   private currentUserId: string | null = null;
+  private currentIdentity: PlayerIdentity | null = null;
 
   get endpoint() {
     return resolveRealtimeUrl();
@@ -56,34 +57,42 @@ class RealtimeClient {
         autoConnect: true,
         transports: ['websocket'],
       });
+      this.socket.on('connect', () => {
+        if (this.currentIdentity) {
+          this.socket?.emit('player:identify', this.currentIdentity);
+        }
+      });
     }
 
     if (!this.socket.connected) {
       const connected = await new Promise<boolean>((resolve) => {
-        const timeout = window.setTimeout(() => resolve(false), 3000);
-        const handleConnect = () => {
-          window.clearTimeout(timeout);
-          this.socket?.off('connect_error', handleError);
-          resolve(true);
-        };
-        const handleError = (error: Error) => {
+        const finish = (value: boolean) => {
           window.clearTimeout(timeout);
           this.socket?.off('connect', handleConnect);
+          this.socket?.off('connect_error', handleError);
+          resolve(value);
+        };
+        const timeout = window.setTimeout(() => {
+          finish(false);
+        }, CONNECT_TIMEOUT_MS);
+        const handleConnect = () => {
+          finish(true);
+        };
+        const handleError = (error: Error) => {
           console.error(error);
-          resolve(false);
         };
 
         this.socket?.once('connect', handleConnect);
-        this.socket?.once('connect_error', handleError);
+        this.socket?.on('connect_error', handleError);
       });
       if (!connected) return false;
     }
 
     if (!this.socket?.connected) return false;
-    if (this.currentUserId === user.id) return true;
 
     const identity = toIdentity(user);
-    await this.emitWithAck<{ ok: true }>('player:identify', identity);
+    this.currentIdentity = identity;
+    this.socket.emit('player:identify', identity);
     this.currentUserId = user.id;
     return true;
   }
@@ -185,7 +194,7 @@ class RealtimeClient {
         reject(new Error('Socket not connected.'));
         return;
       }
-      const timeout = window.setTimeout(() => reject(new Error(`Timed out waiting for ${event}.`)), 4000);
+      const timeout = window.setTimeout(() => reject(new Error(`Timed out waiting for ${event}.`)), ACK_TIMEOUT_MS);
       this.socket.emit(event, payload, (response: T) => {
         window.clearTimeout(timeout);
         resolve(response);

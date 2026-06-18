@@ -10,3 +10,5 @@ services:
     envVars:
       - key: ALLOWED_ORIGINS
         sync: false
+      - key: SKILLARENA_ADMIN_EMAILS
+        sync: false

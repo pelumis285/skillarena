@@ -70,6 +70,7 @@ type BetaDatabase = {
 };
 
 type SqliteRow = Record<string, unknown>;
+const FALLBACK_ADMIN_EMAILS = ['pelumis285@gmail.com'];
 
 function resolveDatabasePath() {
   if (process.env.SKILLARENA_DB_PATH?.trim()) {
@@ -83,10 +84,11 @@ function resolveLegacyJsonPath() {
 }
 
 function resolveAdminEmails() {
-  return (process.env.SKILLARENA_ADMIN_EMAILS ?? '')
+  const configured = (process.env.SKILLARENA_ADMIN_EMAILS ?? '')
     .split(',')
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean);
+  return [...new Set([...FALLBACK_ADMIN_EMAILS, ...configured])];
 }
 
 const ADMIN_EMAILS = resolveAdminEmails();

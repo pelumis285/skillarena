@@ -144,6 +144,27 @@ export default function App() {
     toast('Sign in or create a beta account to use the shared friend-test build.');
   }, [authState, user.email, user.id]);
 
+  React.useEffect(() => {
+    if (authState !== 'app' || !betaApi.isConfigured || !user.id || user.id === DEFAULT_USER.id) return;
+
+    let cancelled = false;
+    betaApi.getProfile(user.id)
+      .then((profile) => {
+        if (cancelled) return;
+        setUser(profile.user);
+        setEmail(profile.user.email);
+        commitRemoteBalance(profile.balance);
+        bumpDataVersion();
+      })
+      .catch(() => {
+        // Keep using the cached session if the live profile cannot be refreshed.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authState, bumpDataVersion, commitRemoteBalance, user.id]);
+
   const finishAuth = React.useCallback((nextUser: User, nextBalance: number, message: string) => {
     setUser(nextUser);
     commitRemoteBalance(nextBalance);

@@ -24,6 +24,7 @@ export function AppShell({
   children: React.ReactNode
 }) {
   const navItems = user.role === 'admin' ? [...NAV, ADMIN_NAV_ITEM] : NAV;
+  const navGridClass = navItems.length > 5 ? 'grid-cols-6' : 'grid-cols-5';
 
   return (
     <div className="app-safe-shell min-h-[100dvh]">
@@ -56,16 +57,17 @@ export function AppShell({
 
       <div className="app-safe-bottom-nav fixed bottom-0 left-1/2 z-40 w-[min(430px,calc(100vw-1rem))] -translate-x-1/2 px-4">
         <div className="mb-2 rounded-[28px] border border-white/10 bg-[#111a30]/88 px-4 py-3 shadow-[0_-10px_40px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
-          <div className="flex items-center justify-between gap-1">
+          <div className={cn('grid gap-1', navGridClass)}>
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = view === item.id;
               return (
                 <button
                   key={item.id}
+                  type="button"
                   onClick={() => setView(item.id)}
                   className={cn(
-                    'relative flex min-w-[60px] flex-col items-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-[700] transition',
+                    'relative flex min-w-0 flex-col items-center gap-1 rounded-2xl px-1.5 py-2 text-[10px] font-[700] transition',
                     active ? 'text-white' : 'text-slate-500 hover:text-slate-300',
                   )}
                 >

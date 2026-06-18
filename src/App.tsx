@@ -156,7 +156,17 @@ export default function App() {
         commitRemoteBalance(profile.balance);
         bumpDataVersion();
       })
-      .catch(() => {
+      .catch((error) => {
+        if (cancelled) return;
+        if (error instanceof Error && /user not found/i.test(error.message)) {
+          localStorage.removeItem('cerebrum_auth');
+          localStorage.removeItem('cerebrum_user');
+          localStorage.removeItem('cerebrum_balance');
+          setAuthState('login');
+          setView('dashboard');
+          toast('Your live beta account was reset on the server. Please sign in again or create the account again to continue.');
+          return;
+        }
         // Keep using the cached session if the live profile cannot be refreshed.
       });
 

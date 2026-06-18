@@ -11,6 +11,7 @@ type PlayerIdentity = {
 type ChallengeEvent = 'challenge:upsert' | 'invite:received';
 const CONNECT_TIMEOUT_MS = 15000;
 const ACK_TIMEOUT_MS = 6000;
+const DEFAULT_LIVE_REALTIME_URL = 'https://skillarena-beta-api.onrender.com';
 
 function resolveRealtimeUrl() {
   if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_REALTIME_URL) {
@@ -23,7 +24,7 @@ function resolveRealtimeUrl() {
       return `${protocol}//${hostname}:3001`;
     }
   }
-  return null;
+  return DEFAULT_LIVE_REALTIME_URL;
 }
 
 function toIdentity(user: User): PlayerIdentity {

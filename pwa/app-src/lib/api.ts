@@ -24,6 +24,7 @@ type WalletPayload = {
 
 const REQUEST_TIMEOUT_MS = 20000;
 const NETWORK_RETRY_DELAYS_MS = [1500, 3500];
+const DEFAULT_LIVE_API_BASE = 'https://skillarena-beta-api.onrender.com';
 
 function resolveApiBase() {
   if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
@@ -36,7 +37,7 @@ function resolveApiBase() {
       return `${protocol}//${hostname}:3001`;
     }
   }
-  return null;
+  return DEFAULT_LIVE_API_BASE;
 }
 
 async function request<T>(path: string, init?: RequestInit) {

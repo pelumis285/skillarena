@@ -30,7 +30,7 @@ export const GAME_RULES: Record<GameId, {
     supportsPublicLobby: true,
     privateInviteOnly: false,
     quickPlayLabel: 'Quick play',
-    wagerLabel: 'Wager $5',
+    wagerLabel: 'Wager ₦5,000',
   },
   ludo: {
     supportsSolo: true,
@@ -38,7 +38,7 @@ export const GAME_RULES: Record<GameId, {
     supportsPublicLobby: true,
     privateInviteOnly: false,
     quickPlayLabel: 'Quick play',
-    wagerLabel: 'Wager $5',
+    wagerLabel: 'Wager ₦5,000',
   },
   whot: {
     supportsSolo: true,
@@ -46,7 +46,7 @@ export const GAME_RULES: Record<GameId, {
     supportsPublicLobby: true,
     privateInviteOnly: false,
     quickPlayLabel: 'Quick play',
-    wagerLabel: 'Wager $5',
+    wagerLabel: 'Wager ₦5,000',
   },
 };
 

@@ -1,7 +1,13 @@
+import './loadEnv.ts';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import {
+  DEFAULT_BETA_BALANCE,
+  DEFAULT_REFERRAL_REWARD_AMOUNT,
+  PRIMARY_COUNTRY,
+} from '../src/lib/market.ts';
 import { mockChallenges } from '../src/lib/mock.ts';
 import type {
   AdminOverviewSnapshot,
@@ -9,6 +15,11 @@ import type {
   AdminUserSnapshot,
   Challenge,
   MatchRecord,
+  PaymentKind,
+  PaymentProvider,
+  PaymentRecord,
+  PaymentStatus,
+  Tournament,
   User,
   UserPerformancePoint,
   UserProfileSnapshot,
@@ -17,10 +28,10 @@ import type {
   WalletTx,
 } from '../src/lib/types.ts';
 
-export const REFERRAL_REWARD_AMOUNT = 2;
+export const REFERRAL_REWARD_AMOUNT = DEFAULT_REFERRAL_REWARD_AMOUNT;
 export const REFERRAL_REWARD_POINTS = 50;
 const PLATFORM_FEE_RATE = 0.07;
-const META_SCHEMA_VERSION = '1';
+const META_SCHEMA_VERSION = '3';
 
 export type StoredWalletTransaction = WalletTx & {
   userId: string;
@@ -43,6 +54,8 @@ export type StoredReferralRecord = {
   createdAt: string;
 };
 
+export type StoredPaymentRecord = PaymentRecord;
+
 export type StoredUser = User & {
   passwordHash: string;
   balance: number;
@@ -64,9 +77,11 @@ export type StoredUser = User & {
 type BetaDatabase = {
   users: StoredUser[];
   challenges: Challenge[];
+  tournaments: Tournament[];
   walletTransactions: StoredWalletTransaction[];
   matchRecords: StoredMatchRecord[];
   referralRecords: StoredReferralRecord[];
+  paymentRecords: StoredPaymentRecord[];
 };
 
 type SqliteRow = Record<string, unknown>;
@@ -117,12 +132,26 @@ function normalizeStoredUser(user: Partial<StoredUser>, index: number): StoredUs
   const username = (user.username ?? `player${index + 1}`).trim().toLowerCase();
   const email = (user.email ?? `${username}@cerebrum.test`).trim().toLowerCase();
   const joinedAt = user.joinedAt ?? new Date().toISOString();
+  const displayName = user.displayName?.trim() || username;
+  const fallbackNameParts = displayName.split(/\s+/).filter(Boolean);
+  const fallbackFirstName = fallbackNameParts[0] ?? username;
+  const fallbackLastName = fallbackNameParts.slice(1).join(' ');
   return {
     id: user.id ?? `u_${crypto.randomUUID().slice(0, 8)}`,
     email,
     username,
-    displayName: user.displayName?.trim() || username,
+    firstName: user.firstName?.trim() || fallbackFirstName,
+    lastName: user.lastName?.trim() || fallbackLastName,
+    phone: user.phone?.trim() || '',
+    country: user.country?.trim() || PRIMARY_COUNTRY,
+    dateOfBirth: user.dateOfBirth?.trim() || '',
+    displayName,
     avatar: user.avatar ?? '🦊',
+    profileImage: user.profileImage?.trim() || null,
+    payoutBankCode: user.payoutBankCode?.trim() || null,
+    payoutBankName: user.payoutBankName?.trim() || null,
+    payoutAccountNumber: user.payoutAccountNumber?.trim() || null,
+    payoutAccountName: user.payoutAccountName?.trim() || null,
     rating: Number.isFinite(user.rating) ? Number(user.rating) : 1500,
     tier: user.tier ?? 'Bronze',
     joinedAt,
@@ -130,7 +159,7 @@ function normalizeStoredUser(user: Partial<StoredUser>, index: number): StoredUs
     referralCode: user.referralCode?.trim() || buildReferralCode(username, user.id),
     referredByCode: user.referredByCode?.trim() || null,
     passwordHash: user.passwordHash ?? '',
-    balance: Number.isFinite(user.balance) ? Number(user.balance) : 25,
+    balance: Number.isFinite(user.balance) ? Number(user.balance) : DEFAULT_BETA_BALANCE,
     referralPoints: Number.isFinite(user.referralPoints) ? Number(user.referralPoints) : 0,
     referralEarnings: Number.isFinite(user.referralEarnings) ? Number(user.referralEarnings) : 0,
     totalDeposited: Number.isFinite(user.totalDeposited) ? Number(user.totalDeposited) : 0,
@@ -189,13 +218,45 @@ function normalizeReferralRecord(entry: Partial<StoredReferralRecord>, index: nu
   };
 }
 
+function normalizePaymentRecord(entry: Partial<StoredPaymentRecord>, index: number): StoredPaymentRecord {
+  const createdAt = entry.createdAt ?? new Date().toISOString();
+  const updatedAt = entry.updatedAt ?? createdAt;
+  return {
+    id: entry.id ?? `pay_${index}_${crypto.randomUUID().slice(0, 6)}`,
+    provider: (entry.provider ?? 'paystack') as PaymentProvider,
+    kind: (entry.kind ?? 'deposit') as PaymentKind,
+    userId: entry.userId ?? 'unknown',
+    amount: Number.isFinite(entry.amount) ? Number(entry.amount) : 0,
+    currency: 'NGN',
+    reference: entry.reference?.trim() || `payment-${crypto.randomUUID().slice(0, 8)}`,
+    status: (entry.status ?? 'pending') as PaymentStatus,
+    description: entry.description?.trim() || 'Wallet payment',
+    authorizationUrl: entry.authorizationUrl?.trim() || null,
+    accessCode: entry.accessCode?.trim() || null,
+    providerTransactionId: entry.providerTransactionId?.trim() || null,
+    transferRecipientCode: entry.transferRecipientCode?.trim() || null,
+    walletTransactionId: entry.walletTransactionId?.trim() || null,
+    bankCode: entry.bankCode?.trim() || null,
+    bankName: entry.bankName?.trim() || null,
+    accountNumber: entry.accountNumber?.trim() || null,
+    accountName: entry.accountName?.trim() || null,
+    failureReason: entry.failureReason?.trim() || null,
+    metadata: entry.metadata ?? null,
+    createdAt,
+    updatedAt,
+    completedAt: entry.completedAt?.trim() || null,
+  };
+}
+
 function seedDatabase(): BetaDatabase {
   return {
     users: [],
     challenges: mockChallenges,
+    tournaments: [],
     walletTransactions: [],
     matchRecords: [],
     referralRecords: [],
+    paymentRecords: [],
   };
 }
 
@@ -232,6 +293,30 @@ function getNumber(value: unknown, fallback = 0) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+function parsePaymentMetadata(value: unknown): StoredPaymentRecord['metadata'] {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as StoredPaymentRecord['metadata'];
+  } catch {
+    return null;
+  }
+}
+
+function hasColumn(db: DatabaseSync, table: string, column: string) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as SqliteRow[];
+  return columns.some((entry) => getText(entry.name) === column);
+}
+
+function ensureColumn(db: DatabaseSync, table: string, column: string, definition: string) {
+  if (!hasColumn(db, table, column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 function parseChallengeRows(rows: SqliteRow[]) {
   const parsed: Challenge[] = [];
   for (const row of rows) {
@@ -246,20 +331,46 @@ function parseChallengeRows(rows: SqliteRow[]) {
   return parsed;
 }
 
+function parseTournamentRows(rows: SqliteRow[]) {
+  const parsed: Tournament[] = [];
+  for (const row of rows) {
+    const payload = getText(row.payload);
+    if (!payload) continue;
+    try {
+      parsed.push(JSON.parse(payload) as Tournament);
+    } catch {
+      continue;
+    }
+  }
+  return parsed;
+}
+
 function readSnapshot(db: DatabaseSync): BetaDatabase {
   const userRows = db.prepare('SELECT * FROM users ORDER BY joined_at ASC').all() as SqliteRow[];
   const walletRows = db.prepare('SELECT * FROM wallet_transactions ORDER BY at DESC').all() as SqliteRow[];
   const matchRows = db.prepare('SELECT * FROM match_records ORDER BY at DESC').all() as SqliteRow[];
   const referralRows = db.prepare('SELECT * FROM referral_records ORDER BY created_at DESC').all() as SqliteRow[];
+  const paymentRows = db.prepare('SELECT * FROM payment_records ORDER BY created_at DESC').all() as SqliteRow[];
   const challengeRows = db.prepare('SELECT * FROM challenges ORDER BY row_order ASC').all() as SqliteRow[];
+  const tournamentRows = db.prepare('SELECT * FROM tournaments ORDER BY row_order ASC').all() as SqliteRow[];
 
   const users = ensureUniqueReferralCodes(ensureOneAdmin(
     userRows.map((row, index) => normalizeStoredUser({
       id: getText(row.id),
       email: getText(row.email),
       username: getText(row.username),
+      firstName: getText(row.first_name),
+      lastName: getText(row.last_name),
+      phone: getText(row.phone),
+      country: getText(row.country),
+      dateOfBirth: getText(row.date_of_birth),
       displayName: getText(row.display_name),
       avatar: getText(row.avatar),
+      profileImage: getNullableText(row.profile_image),
+      payoutBankCode: getNullableText(row.payout_bank_code),
+      payoutBankName: getNullableText(row.payout_bank_name),
+      payoutAccountNumber: getNullableText(row.payout_account_number),
+      payoutAccountName: getNullableText(row.payout_account_name),
       rating: getNumber(row.rating, 1500),
       tier: getText(row.tier) as StoredUser['tier'],
       joinedAt: getText(row.joined_at),
@@ -267,7 +378,7 @@ function readSnapshot(db: DatabaseSync): BetaDatabase {
       referralCode: getText(row.referral_code),
       referredByCode: getNullableText(row.referred_by_code),
       passwordHash: getText(row.password_hash),
-      balance: getNumber(row.balance, 25),
+      balance: getNumber(row.balance, DEFAULT_BETA_BALANCE),
       referralPoints: getNumber(row.referral_points),
       referralEarnings: getNumber(row.referral_earnings),
       totalDeposited: getNumber(row.total_deposited),
@@ -282,10 +393,12 @@ function readSnapshot(db: DatabaseSync): BetaDatabase {
   ));
 
   const challenges = parseChallengeRows(challengeRows);
+  const tournaments = parseTournamentRows(tournamentRows);
 
   return {
     users,
     challenges: challenges.length ? challenges : mockChallenges,
+    tournaments,
     walletTransactions: walletRows.map((row, index) => normalizeWalletTransaction({
       id: getText(row.id),
       userId: getText(row.user_id),
@@ -322,6 +435,31 @@ function readSnapshot(db: DatabaseSync): BetaDatabase {
       rewardPoints: getNumber(row.reward_points, REFERRAL_REWARD_POINTS),
       createdAt: getText(row.created_at),
     }, index)),
+    paymentRecords: paymentRows.map((row, index) => normalizePaymentRecord({
+      id: getText(row.id),
+      provider: getText(row.provider) as PaymentProvider,
+      kind: getText(row.kind) as PaymentKind,
+      userId: getText(row.user_id),
+      amount: getNumber(row.amount),
+      currency: 'NGN',
+      reference: getText(row.reference),
+      status: getText(row.status) as PaymentStatus,
+      description: getText(row.description),
+      authorizationUrl: getNullableText(row.authorization_url),
+      accessCode: getNullableText(row.access_code),
+      providerTransactionId: getNullableText(row.provider_transaction_id),
+      transferRecipientCode: getNullableText(row.transfer_recipient_code),
+      walletTransactionId: getNullableText(row.wallet_transaction_id),
+      bankCode: getNullableText(row.bank_code),
+      bankName: getNullableText(row.bank_name),
+      accountNumber: getNullableText(row.account_number),
+      accountName: getNullableText(row.account_name),
+      failureReason: getNullableText(row.failure_reason),
+      metadata: parsePaymentMetadata(row.metadata),
+      createdAt: getText(row.created_at),
+      updatedAt: getText(row.updated_at),
+      completedAt: getNullableText(row.completed_at),
+    }, index)),
   };
 }
 
@@ -330,9 +468,11 @@ function writeSnapshot(db: DatabaseSync, database: BetaDatabase) {
     database.users.map((user, index) => normalizeStoredUser(user, index)),
   ));
   const normalizedChallenges = database.challenges.length ? database.challenges : mockChallenges;
+  const normalizedTournaments = database.tournaments ?? [];
   const normalizedWallet = database.walletTransactions.map((entry, index) => normalizeWalletTransaction(entry, index));
   const normalizedMatches = database.matchRecords.map((entry, index) => normalizeMatchRecord(entry, index));
   const normalizedReferrals = database.referralRecords.map((entry, index) => normalizeReferralRecord(entry, index));
+  const normalizedPayments = (database.paymentRecords ?? []).map((entry, index) => normalizePaymentRecord(entry, index));
 
   const upsertMeta = db.prepare(`
     INSERT INTO meta (key, value)
@@ -341,14 +481,20 @@ function writeSnapshot(db: DatabaseSync, database: BetaDatabase) {
   `);
   const insertUser = db.prepare(`
     INSERT INTO users (
-      id, email, username, display_name, avatar, rating, tier, joined_at, role, referral_code,
+      id, email, username, first_name, last_name, phone, country, date_of_birth,
+      display_name, avatar, profile_image, payout_bank_code, payout_bank_name,
+      payout_account_number, payout_account_name, rating, tier, joined_at, role, referral_code,
       referred_by_code, password_hash, balance, referral_points, referral_earnings,
       total_deposited, total_withdrawn, total_wagered, total_payouts,
       total_matches, total_wins, total_losses, total_draws
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertChallenge = db.prepare(`
     INSERT INTO challenges (id, row_order, payload)
+    VALUES (?, ?, ?)
+  `);
+  const insertTournament = db.prepare(`
+    INSERT INTO tournaments (id, row_order, payload)
     VALUES (?, ?, ?)
   `);
   const insertWallet = db.prepare(`
@@ -367,12 +513,22 @@ function writeSnapshot(db: DatabaseSync, database: BetaDatabase) {
       id, referrer_user_id, referred_user_id, code, reward_amount, reward_points, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
+  const insertPayment = db.prepare(`
+    INSERT INTO payment_records (
+      id, provider, kind, user_id, amount, currency, reference, status, description,
+      authorization_url, access_code, provider_transaction_id, transfer_recipient_code,
+      wallet_transaction_id, bank_code, bank_name, account_number, account_name,
+      failure_reason, metadata, created_at, updated_at, completed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
 
   db.exec('BEGIN IMMEDIATE');
   try {
+    db.exec('DELETE FROM payment_records');
     db.exec('DELETE FROM referral_records');
     db.exec('DELETE FROM match_records');
     db.exec('DELETE FROM wallet_transactions');
+    db.exec('DELETE FROM tournaments');
     db.exec('DELETE FROM challenges');
     db.exec('DELETE FROM users');
 
@@ -381,8 +537,18 @@ function writeSnapshot(db: DatabaseSync, database: BetaDatabase) {
         user.id,
         user.email,
         user.username,
+        user.firstName,
+        user.lastName,
+        user.phone,
+        user.country,
+        user.dateOfBirth,
         user.displayName,
         user.avatar,
+        user.profileImage ?? null,
+        user.payoutBankCode ?? null,
+        user.payoutBankName ?? null,
+        user.payoutAccountNumber ?? null,
+        user.payoutAccountName ?? null,
         user.rating,
         user.tier,
         user.joinedAt,
@@ -406,6 +572,10 @@ function writeSnapshot(db: DatabaseSync, database: BetaDatabase) {
 
     normalizedChallenges.forEach((challenge, index) => {
       insertChallenge.run(challenge.id, index, JSON.stringify(challenge));
+    });
+
+    normalizedTournaments.forEach((tournament, index) => {
+      insertTournament.run(tournament.id, index, JSON.stringify(tournament));
     });
 
     normalizedWallet.forEach((entry) => {
@@ -451,6 +621,34 @@ function writeSnapshot(db: DatabaseSync, database: BetaDatabase) {
       );
     });
 
+    normalizedPayments.forEach((entry) => {
+      insertPayment.run(
+        entry.id,
+        entry.provider,
+        entry.kind,
+        entry.userId,
+        Number(entry.amount.toFixed(2)),
+        entry.currency,
+        entry.reference,
+        entry.status,
+        entry.description,
+        entry.authorizationUrl ?? null,
+        entry.accessCode ?? null,
+        entry.providerTransactionId ?? null,
+        entry.transferRecipientCode ?? null,
+        entry.walletTransactionId ?? null,
+        entry.bankCode ?? null,
+        entry.bankName ?? null,
+        entry.accountNumber ?? null,
+        entry.accountName ?? null,
+        entry.failureReason ?? null,
+        entry.metadata ? JSON.stringify(entry.metadata) : null,
+        entry.createdAt,
+        entry.updatedAt,
+        entry.completedAt ?? null,
+      );
+    });
+
     upsertMeta.run('schema_version', META_SCHEMA_VERSION);
     upsertMeta.run('engine', 'sqlite');
     db.exec('COMMIT');
@@ -474,8 +672,18 @@ function migrateSchema(db: DatabaseSync) {
       id TEXT PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,
       username TEXT NOT NULL UNIQUE,
+      first_name TEXT NOT NULL DEFAULT '',
+      last_name TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      country TEXT NOT NULL DEFAULT '',
+      date_of_birth TEXT NOT NULL DEFAULT '',
       display_name TEXT NOT NULL,
       avatar TEXT NOT NULL,
+      profile_image TEXT,
+      payout_bank_code TEXT,
+      payout_bank_name TEXT,
+      payout_account_number TEXT,
+      payout_account_name TEXT,
       rating REAL NOT NULL,
       tier TEXT NOT NULL,
       joined_at TEXT NOT NULL,
@@ -497,6 +705,12 @@ function migrateSchema(db: DatabaseSync) {
     );
 
     CREATE TABLE IF NOT EXISTS challenges (
+      id TEXT PRIMARY KEY,
+      row_order INTEGER NOT NULL,
+      payload TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS tournaments (
       id TEXT PRIMARY KEY,
       row_order INTEGER NOT NULL,
       payload TEXT NOT NULL
@@ -538,7 +752,44 @@ function migrateSchema(db: DatabaseSync) {
       reward_points INTEGER NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS payment_records (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      currency TEXT NOT NULL,
+      reference TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL,
+      description TEXT NOT NULL,
+      authorization_url TEXT,
+      access_code TEXT,
+      provider_transaction_id TEXT,
+      transfer_recipient_code TEXT,
+      wallet_transaction_id TEXT,
+      bank_code TEXT,
+      bank_name TEXT,
+      account_number TEXT,
+      account_name TEXT,
+      failure_reason TEXT,
+      metadata TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      completed_at TEXT
+    );
   `);
+
+  ensureColumn(db, 'users', 'first_name', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'users', 'last_name', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'users', 'phone', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'users', 'country', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'users', 'date_of_birth', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'users', 'profile_image', 'TEXT');
+  ensureColumn(db, 'users', 'payout_bank_code', 'TEXT');
+  ensureColumn(db, 'users', 'payout_bank_name', 'TEXT');
+  ensureColumn(db, 'users', 'payout_account_number', 'TEXT');
+  ensureColumn(db, 'users', 'payout_account_name', 'TEXT');
 }
 
 function importLegacyJsonIfNeeded(db: DatabaseSync) {
@@ -548,9 +799,11 @@ function importLegacyJsonIfNeeded(db: DatabaseSync) {
   const counts = {
     users: getNumber((db.prepare('SELECT COUNT(*) AS count FROM users').get() as SqliteRow | undefined)?.count),
     challenges: getNumber((db.prepare('SELECT COUNT(*) AS count FROM challenges').get() as SqliteRow | undefined)?.count),
+    tournaments: getNumber((db.prepare('SELECT COUNT(*) AS count FROM tournaments').get() as SqliteRow | undefined)?.count),
     wallet: getNumber((db.prepare('SELECT COUNT(*) AS count FROM wallet_transactions').get() as SqliteRow | undefined)?.count),
     matches: getNumber((db.prepare('SELECT COUNT(*) AS count FROM match_records').get() as SqliteRow | undefined)?.count),
     referrals: getNumber((db.prepare('SELECT COUNT(*) AS count FROM referral_records').get() as SqliteRow | undefined)?.count),
+    payments: getNumber((db.prepare('SELECT COUNT(*) AS count FROM payment_records').get() as SqliteRow | undefined)?.count),
   };
   const hasExistingData = Object.values(counts).some((count) => count > 0);
   if (hasExistingData) {
@@ -568,10 +821,12 @@ function importLegacyJsonIfNeeded(db: DatabaseSync) {
       writeSnapshot(db, {
         users: Array.isArray(parsed.users) ? parsed.users : [],
         challenges: Array.isArray(parsed.challenges) ? parsed.challenges : mockChallenges,
-        walletTransactions: Array.isArray(parsed.walletTransactions) ? parsed.walletTransactions : [],
-        matchRecords: Array.isArray(parsed.matchRecords) ? parsed.matchRecords : [],
-        referralRecords: Array.isArray(parsed.referralRecords) ? parsed.referralRecords : [],
-      });
+      tournaments: Array.isArray((parsed as Partial<BetaDatabase>).tournaments) ? (parsed as Partial<BetaDatabase>).tournaments! : [],
+      walletTransactions: Array.isArray(parsed.walletTransactions) ? parsed.walletTransactions : [],
+      matchRecords: Array.isArray(parsed.matchRecords) ? parsed.matchRecords : [],
+      referralRecords: Array.isArray(parsed.referralRecords) ? parsed.referralRecords : [],
+      paymentRecords: Array.isArray(parsed.paymentRecords) ? parsed.paymentRecords : [],
+    });
       db.prepare(`
         INSERT INTO meta (key, value)
         VALUES (?, ?)
@@ -630,7 +885,12 @@ export function verifyPassword(password: string, passwordHash: string) {
 }
 
 export function createStoredUser(input: {
+  firstName: string;
+  lastName: string;
   email: string;
+  phone: string;
+  country: string;
+  dateOfBirth: string;
   username: string;
   password: string;
   displayName: string;
@@ -645,15 +905,25 @@ export function createStoredUser(input: {
     id,
     email,
     username,
+    firstName: input.firstName.trim().replace(/\s+/g, ' '),
+    lastName: input.lastName.trim().replace(/\s+/g, ' '),
+    phone: input.phone.trim(),
+    country: input.country.trim() || PRIMARY_COUNTRY,
+    dateOfBirth: input.dateOfBirth.trim(),
     displayName: input.displayName.trim() || input.username.trim(),
     avatar: input.avatar,
+    profileImage: null,
+    payoutBankCode: null,
+    payoutBankName: null,
+    payoutAccountNumber: null,
+    payoutAccountName: null,
     rating: 1500,
     tier: 'Bronze',
     joinedAt: new Date().toISOString(),
     role: input.role ?? normalizeUserRole(email),
     referralCode: buildReferralCode(username, id),
     referredByCode: input.referredByCode?.trim().toUpperCase() || null,
-    balance: 25,
+    balance: DEFAULT_BETA_BALANCE,
     passwordHash: hashPassword(input.password),
     referralPoints: 0,
     referralEarnings: 0,
@@ -673,8 +943,18 @@ export function toPublicUser(user: StoredUser): User {
     id: user.id,
     email: user.email,
     username: user.username,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    phone: user.phone,
+    country: user.country,
+    dateOfBirth: user.dateOfBirth,
     displayName: user.displayName,
     avatar: user.avatar,
+    profileImage: user.profileImage ?? null,
+    payoutBankCode: user.payoutBankCode ?? null,
+    payoutBankName: user.payoutBankName ?? null,
+    payoutAccountNumber: user.payoutAccountNumber ?? null,
+    payoutAccountName: user.payoutAccountName ?? null,
     rating: user.rating,
     tier: user.tier,
     joinedAt: user.joinedAt,
@@ -705,6 +985,58 @@ export function createStoredWalletTransaction(input: {
     game: input.game,
     at: input.at ?? new Date().toISOString(),
   };
+}
+
+export function createStoredPaymentRecord(input: {
+  provider?: PaymentProvider;
+  kind: PaymentKind;
+  userId: string;
+  amount: number;
+  currency?: 'NGN';
+  reference: string;
+  status?: PaymentStatus;
+  description: string;
+  authorizationUrl?: string | null;
+  accessCode?: string | null;
+  providerTransactionId?: string | null;
+  transferRecipientCode?: string | null;
+  walletTransactionId?: string | null;
+  bankCode?: string | null;
+  bankName?: string | null;
+  accountNumber?: string | null;
+  accountName?: string | null;
+  failureReason?: string | null;
+  metadata?: Record<string, string | number | boolean | null> | null;
+  createdAt?: string;
+  updatedAt?: string;
+  completedAt?: string | null;
+}): StoredPaymentRecord {
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  return normalizePaymentRecord({
+    id: `pay_${crypto.randomUUID().slice(0, 10)}`,
+    provider: input.provider ?? 'paystack',
+    kind: input.kind,
+    userId: input.userId,
+    amount: Number(input.amount.toFixed(2)),
+    currency: input.currency ?? 'NGN',
+    reference: input.reference,
+    status: input.status ?? 'pending',
+    description: input.description,
+    authorizationUrl: input.authorizationUrl ?? null,
+    accessCode: input.accessCode ?? null,
+    providerTransactionId: input.providerTransactionId ?? null,
+    transferRecipientCode: input.transferRecipientCode ?? null,
+    walletTransactionId: input.walletTransactionId ?? null,
+    bankCode: input.bankCode ?? null,
+    bankName: input.bankName ?? null,
+    accountNumber: input.accountNumber ?? null,
+    accountName: input.accountName ?? null,
+    failureReason: input.failureReason ?? null,
+    metadata: input.metadata ?? null,
+    createdAt,
+    updatedAt: input.updatedAt ?? createdAt,
+    completedAt: input.completedAt ?? null,
+  }, 0);
 }
 
 export function createStoredMatchRecord(input: {
@@ -854,7 +1186,13 @@ export function buildAdminOverviewSnapshot(params: {
   const userRows: AdminUserSnapshot[] = users
     .map((user) => ({
       id: user.id,
+      email: user.email,
       username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      phone: user.phone,
+      country: user.country,
+      dateOfBirth: user.dateOfBirth,
       displayName: user.displayName,
       joinedAt: user.joinedAt,
       balance: Number(user.balance.toFixed(2)),

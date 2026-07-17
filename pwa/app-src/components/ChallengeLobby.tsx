@@ -1,6 +1,7 @@
 import React from 'react';
 import { GAME_META, mockChallenges, mockOnlinePlayers } from '../lib/mock';
 import { GAME_RULES, inviteCodePrefix } from '../lib/gameRules';
+import { PRIMARY_CURRENCY_LABEL } from '../lib/market';
 import { realtimeClient } from '../lib/realtime';
 import { cn, money, timeAgo } from '../lib/utils';
 import { Badge, Button, Card, Field, GlassCard, Modal, Pill } from './ui';
@@ -163,7 +164,7 @@ function LobbyStat({
   return (
     <div className="rounded-[22px] border border-white/10 bg-white/[0.05] px-4 py-4 text-white">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{label}</div>
+        <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{label}</div>
         <div className="grid h-9 w-9 place-items-center rounded-2xl bg-white/[0.08] text-slate-300">
           {icon}
         </div>
@@ -186,7 +187,7 @@ function LobbySection({
     <section className="space-y-3">
       <div className="px-1">
         <div className="text-[18px] font-[800] tracking-[-0.03em] text-white">{title}</div>
-        <div className="text-[12px] text-slate-500">{subtitle}</div>
+        <div className="text-[12px] text-slate-300">{subtitle}</div>
       </div>
       {children}
     </section>
@@ -200,6 +201,7 @@ function ChallengeCard({
   actionsDisabled,
   disabledActionLabel,
   onAccept,
+  onWatch,
   onOpenRoom,
   toast,
 }: {
@@ -209,6 +211,7 @@ function ChallengeCard({
   actionsDisabled: boolean;
   disabledActionLabel: string;
   onAccept: (challenge: Challenge) => void;
+  onWatch: (challenge: Challenge) => void;
   onOpenRoom: (challenge: Challenge) => void;
   toast: (message: string) => void;
 }) {
@@ -220,8 +223,11 @@ function ChallengeCard({
   const inviteCount = invitedUsers.length + invitedEmails.length;
   const isDirectInvite = isChallengeDirectedToUser(challenge, user.id);
   const requiresAcceptedOpponent = challenge.game === 'words' || challenge.game === 'scrabble';
-  const hasAcceptedOpponent = isMine ? (challenge.participants?.length ?? 0) > 0 : true;
+  const acceptedOpponentCount = challenge.participants?.filter((participant) => participant.id !== challenge.creator.id).length ?? 0;
+  const hasAcceptedOpponent = isMine ? acceptedOpponentCount > 0 : true;
   const canOpenCreatorRoom = !requiresAcceptedOpponent || hasAcceptedOpponent;
+  const isParticipant = challenge.creator.id === user.id || !!challenge.participants?.some((participant) => participant.id === user.id);
+  const canWatchLive = challenge.game === 'ludo' && challenge.status === 'in_progress' && !isParticipant;
   const seatsTotal = challenge.game === 'ludo' ? challenge.seats || 2 : 2;
   const seatsFilled = challenge.seatsFilled || challenge.participants?.length || 1;
   const tableLabel = challenge.game === 'ludo'
@@ -246,7 +252,7 @@ function ChallengeCard({
               <span>{meta.emoji}</span>
             </div>
             <div>
-              <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{tableLabel}</div>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">{tableLabel}</div>
               <div className="text-[18px] font-[780] tracking-[-0.03em] text-white">{meta.name}</div>
             </div>
           </div>
@@ -267,9 +273,9 @@ function ChallengeCard({
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3 text-[12.8px] text-slate-200">
+        <div className="mt-4 grid grid-cols-1 gap-3 text-[12.8px] text-slate-200 sm:grid-cols-2">
           <div className="rounded-[18px] border border-white/10 bg-white/[0.05] px-3 py-3">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Format</div>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Format</div>
             <div className="mt-1 font-[700] text-white">{challenge.game === 'ludo' ? `${seatsFilled}/${seatsTotal} seats filled` : tableLabel}</div>
             <div className="mt-1 text-slate-400">
               {challenge.game === 'ludo'
@@ -282,7 +288,7 @@ function ChallengeCard({
             </div>
           </div>
           <div className="rounded-[18px] border border-white/10 bg-white/[0.05] px-3 py-3">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Access</div>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Access</div>
             <div className="mt-1 font-[700] text-white">{challenge.inviteCode || scopeLabel}</div>
             <div className="mt-1 text-slate-400">{inviteDetail}</div>
           </div>
@@ -315,7 +321,7 @@ function ChallengeCard({
 
         <div className="mt-5 flex items-end justify-between gap-3">
           <div>
-            <div className="text-[11.5px] uppercase tracking-[0.16em] text-slate-500">Stake per seat</div>
+            <div className="text-[11.5px] uppercase tracking-[0.16em] text-slate-400">Stake per seat</div>
             <div className={cn('text-[25px] font-[840] tracking-[-0.04em]', style.stat)}>{money(challenge.stake)}</div>
             <div className="text-[12px] text-slate-400">{challenge.split === 'winner_takes_all' ? 'Winner takes all' : '70 / 30 split'}</div>
           </div>
@@ -335,9 +341,20 @@ function ChallengeCard({
               </Button>
             </div>
           ) : (
-            <Button disabled={busy || actionsDisabled} onClick={() => onAccept(challenge)}>
-              {busy ? 'Joining…' : actionsDisabled ? disabledActionLabel : 'Accept & play'}
-            </Button>
+            <div className="flex items-center gap-2">
+              {canWatchLive ? (
+                <Button variant="secondary" disabled={actionsDisabled} onClick={() => onWatch(challenge)}>
+                  {actionsDisabled ? disabledActionLabel : 'Watch live'}
+                </Button>
+              ) : (
+                <Button
+                  disabled={busy || actionsDisabled}
+                  onClick={() => onAccept(challenge)}
+                >
+                  {busy ? 'Joining…' : actionsDisabled ? disabledActionLabel : 'Accept & play'}
+                </Button>
+              )}
+            </div>
           )}
         </div>
         {isMine && !canOpenCreatorRoom && (
@@ -353,6 +370,7 @@ function ChallengeCard({
 export function ChallengeLobby({
   user,
   onAccept,
+  onWatch,
   onBack,
   toast,
   launchIntent,
@@ -360,6 +378,7 @@ export function ChallengeLobby({
 }: {
   user: User;
   onAccept:(c:Challenge)=>void;
+  onWatch:(c:Challenge)=>void;
   onBack?: ()=>void;
   toast:(m:string)=>void;
   launchIntent?: ChallengeComposerIntent | null;
@@ -367,7 +386,7 @@ export function ChallengeLobby({
 }) {
   const [openCreate, setOpenCreate] = React.useState(false);
   const [createSeed, setCreateSeed] = React.useState<ChallengeComposerIntent | null>(null);
-  const [challenges, setChallenges] = React.useState<Challenge[]>(() => realtimeClient.isConfigured ? [] : mockVisibleChallenges(user));
+  const [challenges, setChallenges] = React.useState<Challenge[]>(() => mockVisibleChallenges(user));
   const [connectionState, setConnectionState] = React.useState<'local'|'connecting'|'online'>('local');
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
@@ -391,7 +410,7 @@ export function ChallengeLobby({
         return;
       }
 
-      setChallenges([]);
+      setChallenges(mockVisibleChallenges(user));
       setConnectionState('connecting');
 
       while (!disposed) {
@@ -441,11 +460,15 @@ export function ChallengeLobby({
     [challenges, user],
   );
   const liveConfigured = realtimeClient.isConfigured;
-  const liveActionsBlocked = liveConfigured && connectionState !== 'online';
-  const liveActionLabel = connectionState === 'connecting' ? 'Connecting…' : 'Live sync…';
+  const livePreviewMode = liveConfigured && connectionState !== 'online';
+  const liveActionsBlocked = false;
+  const liveActionLabel = livePreviewMode ? 'Preview mode' : 'Live';
   const liveBlockedMessage = connectionState === 'connecting'
-    ? 'Still connecting to the live server. Give it a moment, then try again.'
-    : 'The live server is not ready yet. Please wait a moment and try again.';
+    ? 'Live sync is waking up. Preview mode is available while the server reconnects.'
+    : 'Live sync is unavailable right now. Preview mode is available until the server responds.';
+  const liveStatusMessage = connectionState === 'connecting'
+    ? 'Live sync is waking up. You can still explore the lobby and open preview tables while the shared server reconnects.'
+    : 'Live sync is unavailable right now. You can keep using preview mode, and shared rooms will appear once the server responds.';
 
   const myChallenges = React.useMemo(
     () => visibleChallenges.filter((challenge) => challenge.creator.id === user.id),
@@ -469,10 +492,6 @@ export function ChallengeLobby({
 
   const handleAccept = React.useCallback(async (challenge: Challenge) => {
     try {
-      if (realtimeClient.isConfigured && connectionState !== 'online') {
-        toast(liveBlockedMessage);
-        return;
-      }
       setBusyId(challenge.id);
       if (connectionState === 'online') {
         const accepted = await realtimeClient.acceptChallenge(challenge.id, user);
@@ -483,25 +502,25 @@ export function ChallengeLobby({
         }
       }
       onAccept(challenge);
-      toast('Challenge accepted — table opening…');
+      toast(livePreviewMode ? 'Live sync is warming up — opening a preview table for now…' : 'Challenge accepted — table opening…');
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Could not accept challenge.');
     } finally {
       setBusyId(null);
     }
-  }, [connectionState, liveBlockedMessage, onAccept, toast, user]);
+  }, [connectionState, livePreviewMode, onAccept, toast, user]);
 
   const handleOpenRoom = React.useCallback((challenge: Challenge) => {
     onAccept(challenge);
-    toast(`Opening your ${GAME_META[challenge.game].short} room…`);
-  }, [onAccept, toast]);
+    toast(livePreviewMode ? `Opening your ${GAME_META[challenge.game].short} preview room while live sync reconnects…` : `Opening your ${GAME_META[challenge.game].short} room…`);
+  }, [livePreviewMode, onAccept, toast]);
+
+  const handleWatch = React.useCallback((challenge: Challenge) => {
+    onWatch(challenge);
+    toast(`Joining ${GAME_META[challenge.game].short} as a spectator…`);
+  }, [onWatch, toast]);
 
   const handleCreate = React.useCallback(async (draft: ChallengeDraft, options?: { shareAfterCreate?: boolean }) => {
-    if (realtimeClient.isConfigured && connectionState !== 'online') {
-      toast(liveBlockedMessage);
-      return false;
-    }
-
     const invitedUsers = draft.invitedUsers?.filter((invite) => invite.id || invite.name) ?? [];
     const invitedEmails = draft.invitedEmails?.map((email) => email.trim().toLowerCase()).filter(Boolean) ?? [];
     const primaryInvite = invitedUsers[0];
@@ -550,14 +569,16 @@ export function ChallengeLobby({
     const directInvites = invitedUsers.length + invitedEmails.length;
     toast(
       directInvites
-        ? `Challenge posted with ${directInvites} saved invite${directInvites === 1 ? '' : 's'}${draft.inviteCode ? ` • ${draft.inviteCode}` : ''}`
-        : 'Challenge posted. Waiting for opponent…',
+        ? `${livePreviewMode ? 'Preview challenge posted' : 'Challenge posted'} with ${directInvites} saved invite${directInvites === 1 ? '' : 's'}${draft.inviteCode ? ` • ${draft.inviteCode}` : ''}`
+        : livePreviewMode
+          ? 'Preview challenge posted. Waiting for opponent…'
+          : 'Challenge posted. Waiting for opponent…',
     );
     if (options?.shareAfterCreate) {
       await copyShareSummary(challengePayload, toast);
     }
     return true;
-  }, [connectionState, liveBlockedMessage, onAccept, toast, user]);
+  }, [connectionState, livePreviewMode, onAccept, toast, user]);
 
   return (
     <div className="space-y-6 text-white">
@@ -567,8 +588,8 @@ export function ChallengeLobby({
         <div className="relative">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Play lobby</div>
-              <h2 className="mt-2 text-[34px] tracking-[-0.04em] text-white" style={{ fontFamily:'Fraunces, serif', fontWeight:600 }}>
+              <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Play lobby</div>
+              <h2 className="mt-2 text-[34px] font-[800] tracking-[-0.06em] text-white">
                 Clear rooms. Clear stakes. Clear next steps.
               </h2>
               <div className="mt-3 max-w-[22rem] text-[13.5px] leading-6 text-slate-300">
@@ -590,15 +611,22 @@ export function ChallengeLobby({
                 ? <Badge variant="emerald">Live server</Badge>
                 : connectionState === 'connecting'
                   ? <Badge variant="gold">Connecting…</Badge>
-                  : <Badge variant="default">Live server unavailable</Badge>
+                  : <Badge variant="rose">Live server unavailable</Badge>
             ) : (
               <Badge variant="default">Local preview</Badge>
             )}
             <Badge variant="purple">{mockOnlinePlayers.length} players online</Badge>
           </div>
-          {liveActionsBlocked && (
-            <div className="mt-3 text-[12.8px] text-amber-100/88">
-              Waiting for the live server to finish syncing before rooms can be posted or joined.
+          {livePreviewMode && (
+            <div className={cn(
+              'mt-3 rounded-[18px] px-4 py-3 text-[12.8px] leading-6',
+              connectionState === 'connecting'
+                ? 'border border-amber-300/20 bg-amber-300/[0.12] text-amber-100'
+                : connectionState === 'local'
+                  ? 'border border-rose-300/20 bg-rose-300/[0.12] text-rose-100'
+                  : 'border border-sky-300/20 bg-sky-400/[0.12] text-sky-100',
+            )}>
+              {liveStatusMessage}
             </div>
           )}
 
@@ -613,30 +641,30 @@ export function ChallengeLobby({
             <button
               type="button"
               disabled={liveActionsBlocked}
-              onClick={() => launchComposer({ game: 'chess', inviteScope: 'public', stake: 10 })}
+              onClick={() => launchComposer({ game: 'chess', inviteScope: 'public', stake: 10000 })}
               className="rounded-[20px] border border-white/10 bg-white/[0.05] px-4 py-3 text-left transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-55"
             >
-              <div className="text-[12px] uppercase tracking-[0.18em] text-slate-500">Quick action</div>
+              <div className="text-[12px] uppercase tracking-[0.18em] text-slate-400">Quick action</div>
               <div className="mt-1 font-[760] text-white">Post public chess</div>
               <div className="mt-1 text-[12px] text-slate-400">Open a live table anyone can join.</div>
             </button>
             <button
               type="button"
               disabled={liveActionsBlocked}
-              onClick={() => launchComposer({ game: 'words', inviteScope: 'private', stake: 5 })}
+              onClick={() => launchComposer({ game: 'words', inviteScope: 'private', stake: 5000 })}
               className="rounded-[20px] border border-white/10 bg-white/[0.05] px-4 py-3 text-left transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-55"
             >
-              <div className="text-[12px] uppercase tracking-[0.18em] text-slate-500">Quick action</div>
+              <div className="text-[12px] uppercase tracking-[0.18em] text-slate-400">Quick action</div>
               <div className="mt-1 font-[760] text-white">Invite a friend</div>
               <div className="mt-1 text-[12px] text-slate-400">Launch a private WordForge or Scrabble room fast.</div>
             </button>
             <button
               type="button"
               disabled={liveActionsBlocked}
-              onClick={() => launchComposer({ game: 'ludo', inviteScope: 'public', stake: 4 })}
+              onClick={() => launchComposer({ game: 'ludo', inviteScope: 'public', stake: 4000 })}
               className="rounded-[20px] border border-white/10 bg-white/[0.05] px-4 py-3 text-left transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-55"
             >
-              <div className="text-[12px] uppercase tracking-[0.18em] text-slate-500">Quick action</div>
+              <div className="text-[12px] uppercase tracking-[0.18em] text-slate-400">Quick action</div>
               <div className="mt-1 font-[760] text-white">Open Ludo room</div>
               <div className="mt-1 text-[12px] text-slate-400">Spin up a visible 2- or 4-seat table.</div>
             </button>
@@ -656,6 +684,7 @@ export function ChallengeLobby({
                 actionsDisabled={liveActionsBlocked}
                 disabledActionLabel={liveActionLabel}
                 onAccept={handleAccept}
+                onWatch={handleWatch}
                 onOpenRoom={handleOpenRoom}
                 toast={toast}
               />
@@ -676,6 +705,7 @@ export function ChallengeLobby({
                 actionsDisabled={liveActionsBlocked}
                 disabledActionLabel={liveActionLabel}
                 onAccept={handleAccept}
+                onWatch={handleWatch}
                 onOpenRoom={handleOpenRoom}
                 toast={toast}
               />
@@ -696,6 +726,7 @@ export function ChallengeLobby({
                 actionsDisabled={liveActionsBlocked}
                 disabledActionLabel={liveActionLabel}
                 onAccept={handleAccept}
+                onWatch={handleWatch}
                 onOpenRoom={handleOpenRoom}
                 toast={toast}
               />
@@ -723,7 +754,7 @@ export function ChallengeLobby({
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <div className="text-[18px] font-[800] tracking-[-0.03em] text-white">Online now</div>
-            <div className="text-[12px] text-slate-500">Players currently available across the active games.</div>
+            <div className="text-[12px] text-slate-300">Players currently available across the active games.</div>
           </div>
           <Badge variant="purple">{mockOnlinePlayers.length} live</Badge>
         </div>
@@ -779,7 +810,7 @@ function CreateChallengeModal({
   toast: (message: string) => void;
 }) {
   const [game, setGame] = React.useState<GameId>('chess');
-  const [stake, setStake] = React.useState(10);
+  const [stake, setStake] = React.useState(10000);
   const [split, setSplit] = React.useState<'winner_takes_all'|'70_30'>('winner_takes_all');
   const [inviteScope, setInviteScope] = React.useState<'public'|'private'>('public');
   const [ludoSeats, setLudoSeats] = React.useState<LudoSeats>(2);
@@ -847,7 +878,7 @@ function CreateChallengeModal({
   const resetFromIntent = React.useCallback((intent?: ChallengeComposerIntent | null) => {
     const nextGame = intent?.game ?? 'chess';
     setGame(nextGame);
-    setStake(intent?.stake ?? (nextGame === 'words' ? 5 : 10));
+    setStake(intent?.stake ?? (nextGame === 'words' ? 5000 : 10000));
     setSplit('winner_takes_all');
     setInviteScope(intent?.inviteScope ?? (GAME_RULES[nextGame].supportsPublicLobby ? 'public' : 'private'));
     setLudoSeats(2);
@@ -943,6 +974,8 @@ function CreateChallengeModal({
   const quickPlayNote = game === 'words'
     ? 'WordForge quick play currently runs as a heads-up challenge. Invite one or more usernames and the first accepted seat becomes your live opponent.'
     : 'Scrabble Social quick play currently opens as a heads-up board. You can still post it publicly, invite by username, and share the challenge link or code.';
+  const optionChipClass = 'rounded-full border border-[rgba(255,255,255,0.08)] px-3.5 py-2 text-[13.5px] transition';
+  const selectClass = 'w-full rounded-[1.6rem] border border-[rgba(255,255,255,0.06)] bg-[var(--surface-2)] px-4 py-4 text-[15px] text-white outline-none transition focus:border-[rgba(184,250,51,0.4)] focus:ring-2 focus:ring-[rgba(184,250,51,0.16)] disabled:opacity-60';
 
   const submitChallenge = async (shareAfterCreate = false) => {
     if (actionsDisabled) {
@@ -971,15 +1004,15 @@ function CreateChallengeModal({
 
   return (
     <Modal open={open} onClose={onClose} title="Create challenge" maxWidth="max-w-2xl">
-      <div className="space-y-5">
-        <div className="rounded-[24px] border border-zinc-200 bg-[radial-gradient(circle_at_top,#eef4ff,white_58%,#f7f1e8)] p-4">
+      <div className="space-y-5 text-white">
+        <div className="rounded-[24px] border border-[rgba(122,84,239,0.18)] bg-[linear-gradient(145deg,rgba(122,84,239,0.18),rgba(16,22,34,0.96)_65%,rgba(10,15,24,0.98))] p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Compose room</div>
-              <div className="mt-1 text-[22px] font-[760] tracking-[-0.03em]" style={{ fontFamily:'Fraunces, serif' }}>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Compose room</div>
+              <div className="mt-1 text-[22px] font-[800] tracking-[-0.05em] text-white">
                 Set the game, the stake, and who should see it.
               </div>
-              <div className="mt-2 text-[13px] leading-6 text-zinc-600">
+              <div className="mt-2 text-[13px] leading-6 text-slate-200">
                 Public tables appear in the Play lobby. Private rooms can include multiple friends and saved email referrals.
               </div>
             </div>
@@ -988,32 +1021,34 @@ function CreateChallengeModal({
         </div>
 
         {quickPlayLivesInLobby && (
-          <div className="rounded-[20px] border border-zinc-200 bg-[#f6f8ff] px-4 py-4 text-[13px] text-zinc-700">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Quick play setup</div>
+          <div className="rounded-[20px] border border-sky-300/18 bg-sky-400/[0.12] px-4 py-4 text-[13px] text-sky-50">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-sky-100/80">Quick play setup</div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Pill>2-player live table</Pill>
               <Pill>{inviteScope === 'public' ? 'Post in lobby' : 'Private invite room'}</Pill>
               <Pill>{money(stake)} stake</Pill>
             </div>
-            <div className="mt-3 leading-6">{quickPlayNote}</div>
+            <div className="mt-3 leading-6 text-sky-50/92">{quickPlayNote}</div>
           </div>
         )}
 
         {actionsDisabled && (
-          <div className="rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-[12.8px] text-amber-900">
+          <div className="rounded-[18px] border border-amber-300/20 bg-amber-300/[0.12] px-4 py-3 text-[12.8px] text-amber-100">
             {disabledMessage}
           </div>
         )}
 
         <div>
-          <div className="text-[12.6px] text-zinc-600 dark:text-zinc-400 mb-2 font-[550]">Game</div>
+          <div className="mb-2 text-[12.6px] font-[700] text-[var(--muted)]">Game</div>
           <div className="flex gap-2 flex-wrap">
             {(Object.keys(GAME_META) as GameId[]).map((entry) => (
               <button
                 key={entry}
                 type="button"
                 onClick={() => setGame(entry)}
-                className={'px-3.5 py-2 rounded-full border text-[13.5px] ' + (game===entry ? 'bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900' : 'border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800')}
+                className={game === entry
+                  ? `${optionChipClass} border-[rgba(184,250,51,0.24)] bg-[var(--lime)] text-[#0d1117]`
+                  : `${optionChipClass} text-slate-100 hover:bg-white/[0.04]`}
               >
                 {GAME_META[entry].emoji} {GAME_META[entry].short}
               </button>
@@ -1021,65 +1056,65 @@ function CreateChallengeModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={game === 'ludo' ? 'Stake per seat (USD)' : 'Stake (USD)'} type="number" value={stake} onChange={(event)=>setStake(Math.max(0, parseFloat(event.target.value)||0))}/>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label={game === 'ludo' ? `Stake per seat (${PRIMARY_CURRENCY_LABEL})` : `Stake (${PRIMARY_CURRENCY_LABEL})`} type="number" value={stake} onChange={(event)=>setStake(Math.max(0, parseFloat(event.target.value)||0))}/>
           <label className="block text-[12.8px]">
-            <div className="text-zinc-600 mb-1.5 font-[550] dark:text-zinc-400">Payout</div>
-            <select value={split} disabled={rule.privateInviteOnly} onChange={(event)=>setSplit(event.target.value as 'winner_takes_all'|'70_30')} className="w-full rounded-[16px] bg-[#f5f2ee] border border-zinc-200 px-3.5 py-3 outline-none disabled:opacity-60 dark:bg-zinc-800 dark:border-zinc-700">
+            <div className="mb-3 font-[700] text-[var(--muted)]">Payout</div>
+            <select value={split} disabled={rule.privateInviteOnly} onChange={(event)=>setSplit(event.target.value as 'winner_takes_all'|'70_30')} className={selectClass}>
               <option value="winner_takes_all">Winner takes all</option>
               <option value="70_30">70 / 30 split</option>
             </select>
           </label>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {game === 'ludo' ? (
             <label className="block text-[12.8px]">
-              <div className="text-zinc-600 mb-1.5 font-[550] dark:text-zinc-400">Seats</div>
-              <select value={ludoSeats} onChange={(event)=>setLudoSeats(Number(event.target.value) as LudoSeats)} className="w-full rounded-[16px] bg-[#f5f2ee] border border-zinc-200 px-3.5 py-3 outline-none dark:bg-zinc-800 dark:border-zinc-700">
+              <div className="mb-3 font-[700] text-[var(--muted)]">Seats</div>
+              <select value={ludoSeats} onChange={(event)=>setLudoSeats(Number(event.target.value) as LudoSeats)} className={selectClass}>
                 <option value={2}>2 players</option>
                 <option value={4}>4 players</option>
               </select>
             </label>
           ) : (
-            <div className="rounded-[18px] bg-[#f7f3ea] px-4 py-3 text-[13px] text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-              <div className="font-[650]">Room style</div>
-              <div className="mt-1">{game === 'words' ? 'Human-only rack duel.' : game === 'scrabble' ? 'Shared board, hidden racks, optional rack-peak offers.' : 'Head-to-head skill table.'}</div>
+            <div className="rounded-[18px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-[13px] text-slate-200">
+              <div className="font-[700]">Room style</div>
+              <div className="mt-1 leading-6">{game === 'words' ? 'Human-only rack duel.' : game === 'scrabble' ? 'Shared board, hidden racks, optional rack-peak offers.' : 'Head-to-head skill table.'}</div>
             </div>
           )}
           <label className="block text-[12.8px]">
-            <div className="text-zinc-600 mb-1.5 font-[550] dark:text-zinc-400">Listing</div>
-            <select value={inviteScope} disabled={rule.privateInviteOnly} onChange={(event)=>setInviteScope(event.target.value as 'public'|'private')} className="w-full rounded-[16px] bg-[#f5f2ee] border border-zinc-200 px-3.5 py-3 outline-none disabled:opacity-60 dark:bg-zinc-800 dark:border-zinc-700">
+            <div className="mb-3 font-[700] text-[var(--muted)]">Listing</div>
+            <select value={inviteScope} disabled={rule.privateInviteOnly} onChange={(event)=>setInviteScope(event.target.value as 'public'|'private')} className={selectClass}>
               {rule.supportsPublicLobby && <option value="public">Post in public lobby</option>}
               <option value="private">{rule.privateInviteOnly ? 'Invite-only room' : 'Private invite room'}</option>
             </select>
           </label>
         </div>
 
-        <Card className="border-zinc-200 bg-[#faf7f2] p-4 dark:bg-zinc-900/80">
+        <Card className="bg-[var(--surface)] p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-[12px] uppercase tracking-[0.18em] text-zinc-500">Direct invites</div>
-              <div className="mt-1 text-[16px] font-[700] tracking-tight">Invite multiple existing friends and add email referrals.</div>
-              <div className="mt-1 text-[12.8px] text-zinc-500">Public listings can still send direct invites. Private rooms stay visible only to invited users and accepted participants.</div>
+              <div className="text-[12px] uppercase tracking-[0.18em] text-[var(--muted)]">Direct invites</div>
+              <div className="mt-1 text-[16px] font-[700] tracking-tight text-white">Invite multiple existing friends and add email referrals.</div>
+              <div className="mt-1 text-[12.8px] text-slate-300">Public listings can still send direct invites. Private rooms stay visible only to invited users and accepted participants.</div>
             </div>
             <Pill>{directInviteCount} queued</Pill>
           </div>
 
           <div className="mt-4">
-            <div className="text-[12.8px] text-zinc-600 dark:text-zinc-400 mb-2 font-[550]">Choose friends already online</div>
+            <div className="mb-2 text-[12.8px] font-[700] text-[var(--muted)]">Choose friends already online</div>
             <div className="flex flex-wrap gap-2">
-              {friendPool.length === 0 && <span className="text-[12.8px] text-zinc-500">No matching friends online for this game right now.</span>}
+              {friendPool.length === 0 && <span className="text-[12.8px] text-slate-400">No matching friends online for this game right now.</span>}
               {friendPool.map((player) => (
                 <button
                   key={player.id}
                   type="button"
                   onClick={() => toggleFriend(player.id)}
                   className={cn(
-                    'rounded-full border px-3 py-2 text-[13px] transition',
+                    `${optionChipClass} text-[13px]`,
                     selectedFriendIds.includes(player.id)
-                      ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
-                      : 'border-zinc-200 bg-white hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800',
+                      ? 'border-[rgba(184,250,51,0.24)] bg-[var(--lime)] text-[#0d1117]'
+                      : 'text-slate-100 hover:bg-white/[0.04]',
                   )}
                 >
                   {player.avatar} {player.name} • @{player.username}{player.online === false ? ' • offline' : ''}
@@ -1106,7 +1141,7 @@ function CreateChallengeModal({
                   key={player.id}
                   type="button"
                   onClick={() => addFriendByUsername(player.username)}
-                  className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-[12.8px] transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                  className="rounded-full border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-[12.8px] text-slate-200 transition hover:bg-white/[0.06]"
                 >
                   {player.avatar} {player.name} • @{player.username}{player.online === false ? ' • offline' : ''}
                 </button>
@@ -1125,27 +1160,27 @@ function CreateChallengeModal({
             <Button onClick={addInviteEmail}>Add email</Button>
           </div>
 
-          {!!inviteHint && <div className="mt-2 text-[12.6px] text-zinc-500">{inviteHint}</div>}
+          {!!inviteHint && <div className="mt-2 text-[12.6px] text-slate-300">{inviteHint}</div>}
 
           {(selectedFriends.length > 0 || inviteEmails.length > 0) && (
             <div className="mt-4 flex flex-wrap gap-2">
               {selectedFriends.map((friend) => (
-                <span key={friend.id} className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1.5 text-[12.6px] dark:bg-zinc-800">
+                <span key={friend.id} className="inline-flex items-center gap-2 rounded-full border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.05)] px-3 py-1.5 text-[12.6px] text-slate-100">
                   {friend.avatar} {friend.name} • @{friend.username}
-                  <button type="button" onClick={() => toggleFriend(friend.id)} className="text-zinc-500">✕</button>
+                  <button type="button" onClick={() => toggleFriend(friend.id)} className="text-slate-400">✕</button>
                 </span>
               ))}
               {inviteEmails.map((email) => (
-                <span key={email} className="inline-flex items-center gap-2 rounded-full bg-[#eef4ff] px-3 py-1.5 text-[12.6px] dark:bg-zinc-800">
+                <span key={email} className="inline-flex items-center gap-2 rounded-full border border-sky-300/20 bg-sky-400/[0.12] px-3 py-1.5 text-[12.6px] text-sky-100">
                   ✉ {email}
-                  <button type="button" onClick={() => setInviteEmails((current) => current.filter((entry) => entry !== email))} className="text-zinc-500">✕</button>
+                  <button type="button" onClick={() => setInviteEmails((current) => current.filter((entry) => entry !== email))} className="text-sky-200">✕</button>
                 </span>
               ))}
             </div>
           )}
         </Card>
 
-        <div className="rounded-[20px] border border-zinc-200 bg-[#f7f3ea] px-4 py-3 text-[13px] text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+        <div className="rounded-[20px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-[13px] leading-6 text-slate-200">
           Pot: {money(totalPot)} • Platform fee 7% • {split === 'winner_takes_all' ? `Winner receives ${money(payout)}` : `Top seat receives ${money(payout)} • runner-up receives ${money(totalPot * 0.279)}`} <br/>
           {game === 'words'
             ? 'WordForge quick play can be posted publicly, invited by username, or shared after posting. Email referrals stay stored here until automatic delivery is wired up.'

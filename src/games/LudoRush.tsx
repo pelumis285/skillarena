@@ -1,5 +1,7 @@
 import React from 'react';
+import { GameChat } from '../components/GameChat';
 import { realtimeClient } from '../lib/realtime';
+import { PRIMARY_CURRENCY_LABEL } from '../lib/market';
 import {
   FINISH_PROGRESS,
   FINISH_SLOTS,
@@ -49,6 +51,7 @@ type Props = {
   balance: number;
   user: User;
   challenge?: Challenge;
+  watchOnly?: boolean;
   onLockStake: (stake: number) => boolean;
   onFinish: (r:{score:number,won:boolean,payout:number,msg?:string})=>void;
   onExit: ()=>void;
@@ -257,12 +260,12 @@ function DiceFace({ value }: { value: number }) {
   );
 }
 
-export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinish, onExit }: Props) {
+export function LudoRush({ stake, balance, user, challenge, watchOnly = false, onLockStake, onFinish, onExit }: Props) {
   const [phase, setPhase] = React.useState<MatchPhase>('setup');
   const [mode, setMode] = React.useState<LudoMode>(challenge?.mode ?? 'solo');
   const [seats, setSeats] = React.useState<LudoSeats>(challenge?.seats ?? 2);
   const [selectedFriendId, setSelectedFriendId] = React.useState<string>(challenge?.invitedUserId ?? challenge?.invitedUsers?.[0]?.id ?? mockOnlinePlayers.find((player)=> player.game === 'ludo')?.id ?? '');
-  const [stakeInput, setStakeInput] = React.useState<number>(challenge?.stake ?? (stake > 0 ? stake : 4));
+  const [stakeInput, setStakeInput] = React.useState<number>(challenge?.stake ?? (stake > 0 ? stake : 4000));
   const [setupNote, setSetupNote] = React.useState<string>(challenge ? 'Review the room and lock your seat to begin.' : 'Choose solo or friends, pick your stake, and launch the table.');
 
   const [players, setPlayers] = React.useState<MatchPlayer[]>([]);
@@ -296,6 +299,7 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
     }],
     hostUserId: challenge.creator.id,
     inviteCode: challenge.inviteCode,
+    spectators: [],
     state: challenge.status === 'finished'
       ? 'finished'
       : challenge.status === 'in_progress'
@@ -310,6 +314,7 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
     [],
   );
   const challengeRoomId = challenge?.roomId;
+  const spectatorMode = watchOnly && !!challengeRoomId;
 
   React.useEffect(() => {
     if (!challengeRoomId || !realtimeClient.isConfigured) return;
@@ -352,6 +357,7 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
   }, [onlineMatch]);
 
   React.useEffect(() => {
+    if (spectatorMode) return;
     if (!onlineMatch?.winnerOwnerId) {
       completedOnlineWinnerRef.current = null;
       return;
@@ -376,7 +382,7 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
     }), 900);
 
     return () => window.clearTimeout(timer);
-  }, [onlineMatch, onFinish, user.id]);
+  }, [onlineMatch, onFinish, spectatorMode, user.id]);
 
   const livePlayers = onlineMatch?.players ?? players;
   const turnOwnerIds = React.useMemo(
@@ -402,9 +408,9 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
   );
   const currentSide = sides[liveTurnIndex] ?? null;
   const current = currentSide?.sample;
-  const currentIsUser = currentOwnerId === user.id;
+  const currentIsUser = !spectatorMode && currentOwnerId === user.id;
   const liveDice = onlineMatch?.dice ?? dice;
-  const liveCanRoll = onlineMatch ? (onlineMatch.canRoll && !onlineBusy) : canRoll;
+  const liveCanRoll = onlineMatch ? (onlineMatch.canRoll && !onlineBusy && !spectatorMode) : canRoll;
   const liveWinner = onlineMatch?.winnerOwnerId ?? winner;
   const liveMessage = onlineMatch?.message ?? message;
   const liveStake = onlineMatch?.activeStake ?? activeStake;
@@ -696,6 +702,45 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
   }, [myRoomReady, roomState, user.id]);
 
   if (phase === 'setup') {
+    if (spectatorMode) {
+      return (
+        <GameScreen className="max-w-5xl">
+          <GameHero
+            accent="lime"
+            eyebrow="Ludo Rush"
+            title="Spectator lounge"
+            subtitle="You are joining this live board as a watcher. Once the room state lands, the board will switch into the live match automatically and the chat stays open while you wait."
+            onExit={onExit}
+            exitLabel="Leave watch"
+          >
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="gold">Watching live</Badge>
+              <Badge variant="emerald">{challenge?.inviteCode || 'Public room'}</Badge>
+              <Badge variant="default">Chat and follow the board</Badge>
+            </div>
+          </GameHero>
+
+          <div className="grid lg:grid-cols-[minmax(360px,1fr)_360px] gap-6 items-start">
+            <GamePanel className="p-6">
+              <div className="text-[12px] uppercase tracking-[0.18em] text-slate-400">Joining board</div>
+              <div className="mt-2 text-[28px] font-[800] tracking-[-0.05em] text-white">
+                {challenge?.creator.name}'s live room
+              </div>
+              <div className="mt-3 text-[13.6px] leading-6 text-slate-300">
+                Spectators can watch the live board and chat with the room while the current group finishes. This same watcher flow is what we can build tournament rounds on top of next.
+              </div>
+              <div className="mt-5 rounded-[24px] border border-white/10 bg-white/[0.05] px-4 py-4 text-[13px] text-slate-300">
+                {roomState?.state === 'in_progress'
+                  ? 'The live room is already in motion. Loading the board…'
+                  : 'Waiting for the room to go live.'}
+              </div>
+            </GamePanel>
+            <GameChat challenge={challenge} user={user} />
+          </div>
+        </GameScreen>
+      );
+    }
+
     const previewSeats = roomState?.seats ?? (mode === 'solo' ? 2 : seats);
     const projectedPot = stakeInput > 0 ? stakeInput * previewSeats : 0;
     const selectedFriend = friendPool.find((player)=> player.id === selectedFriendId);
@@ -755,7 +800,7 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
 
             <div className="mt-5 grid md:grid-cols-2 gap-3">
               <Field
-                label={mode === 'friends' ? 'Stake per seat (USD)' : 'Solo stake (USD)'}
+                label={mode === 'friends' ? `Stake per seat (${PRIMARY_CURRENCY_LABEL})` : `Solo stake (${PRIMARY_CURRENCY_LABEL})`}
                 type="number"
                 value={stakeInput}
                 className={gameFieldClass}
@@ -791,19 +836,19 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
             <div className="mt-5 rounded-[26px] border border-white/10 bg-white/[0.05] p-4">
               <div className="grid sm:grid-cols-4 gap-3 text-[13px]">
                 <div className={gameInfoTileClass}>
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Your wallet</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Your wallet</div>
                   <div className="mt-1 text-[21px] font-[740] text-white">{money(balance)}</div>
                 </div>
                 <div className={gameInfoTileClass}>
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Room size</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Room size</div>
                   <div className="mt-1 text-[21px] font-[740] text-white">{previewSeats} seats</div>
                 </div>
                 <div className={gameInfoTileClass}>
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Projected pot</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Projected pot</div>
                   <div className="mt-1 text-[21px] font-[740] text-white">{projectedPot ? money(projectedPot) : 'Practice'}</div>
                 </div>
                 <div className={gameInfoTileClass}>
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Winner payout</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Winner payout</div>
                   <div className="mt-1 text-[21px] font-[740] text-white">{projectedPot ? money(projectedPot * 0.93) : '—'}</div>
                 </div>
               </div>
@@ -841,7 +886,7 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
                           <div className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.08] text-[20px]">{participant?.avatar || '•'}</div>
                           <div className="min-w-0">
                             <div className="truncate font-[650] text-white">{participant?.name || 'Open seat'}</div>
-                            <div className="text-[12px] text-slate-500">{participant ? `Seat ${seatIndex + 1}` : 'Waiting for join'}</div>
+                            <div className="text-[12px] text-slate-400">{participant ? `Seat ${seatIndex + 1}` : 'Waiting for join'}</div>
                           </div>
                         </div>
                         <Pill className={participant?.ready ? 'border border-emerald-400/20 bg-emerald-500/14 text-emerald-200' : gamePillClass}>
@@ -896,6 +941,7 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
               </div>
             </div>
           </GamePanel>
+          <GameChat challenge={challenge} user={user} />
         </div>
       </GameScreen>
     );
@@ -927,32 +973,32 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
       <GameHero
         accent="lime"
         eyebrow="Ludo Rush"
-        title={mode === 'solo' ? 'Solo board live' : `${sideCount}-player room live`}
+        title={spectatorMode ? 'Live board watch' : mode === 'solo' ? 'Solo board live' : `${sideCount}-player room live`}
         subtitle="Cleaner board chrome, brighter turn information, and a layout that feels like part of the same premium arena as the rest of the app."
         onExit={onExit}
         exitLabel="Leave table"
       >
         <div className="flex flex-wrap gap-2">
           <Badge variant="gold">Stake {liveStake ? money(liveStake) : 'Practice'}</Badge>
-          <Badge variant="default">{mode === 'solo' ? 'Solo vs computer' : `${sideCount} players online`}</Badge>
+          <Badge variant="default">{spectatorMode ? 'Watching live' : mode === 'solo' ? 'Solo vs computer' : `${sideCount} players online`}</Badge>
           <Badge variant="emerald">{current?.avatar || '•'} {current?.name || 'Waiting'} on move</Badge>
         </div>
       </GameHero>
 
-      <div className="grid xl:grid-cols-[minmax(420px,1fr)_360px] gap-6 items-start">
+      <div className="grid gap-5 items-start xl:grid-cols-[minmax(420px,1fr)_360px] sm:gap-6">
         <GamePanel className="p-4 sm:p-6">
-          <div className="mb-3 flex items-center justify-between gap-3 rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-3 rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Match pot</div>
+              <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Match pot</div>
               <div className="mt-1 text-[22px] font-[760] tracking-tight text-white">{pot ? money(pot) : 'Practice'}</div>
             </div>
             <div className="text-right">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">On move</div>
+              <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">On move</div>
               <div className="mt-1 text-[14px] font-[680] text-white">{current?.name || 'Waiting'}</div>
             </div>
           </div>
 
-          <div className="relative w-full aspect-square rounded-[32px] border border-white/10 bg-white p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)] overflow-hidden">
+          <div className="relative aspect-square w-full overflow-hidden rounded-[24px] border border-white/10 bg-white p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)] sm:rounded-[32px] sm:p-3">
             <div className="relative h-full w-full">
               <div className="grid h-full w-full rounded-[24px] overflow-hidden" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${GRID_SIZE}, minmax(0, 1fr))` }}>
                 {Array.from({ length: GRID_SIZE * GRID_SIZE }).map((_, index) => {
@@ -983,9 +1029,9 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
                         !baseColor && !homeColor && !track && 'bg-white',
                       )}
                     >
-                      {safe && <span className="absolute inset-0 grid place-items-center text-[12px] text-zinc-500">★</span>}
+                      {safe && <span className="absolute inset-0 grid place-items-center text-[9px] text-zinc-500 sm:text-[12px]">★</span>}
                       {startColor && (
-                        <span className={cn('absolute inset-0 grid place-items-center text-[12px] font-[800]', COLOR_META[startColor].ink)}>
+                        <span className={cn('absolute inset-0 grid place-items-center text-[9px] font-[800] sm:text-[12px]', COLOR_META[startColor].ink)}>
                           {startColor === 'green' ? '→' : startColor === 'yellow' ? '↓' : startColor === 'red' ? '↑' : '←'}
                         </span>
                       )}
@@ -1003,21 +1049,21 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
                 const height = `${((area.rows[1] - area.rows[0] + 1) / GRID_SIZE) * 100 - 5}%`;
 
                 return (
-                  <div key={color} style={{ top, left, width, height }} className="absolute p-3">
-                    <div className="absolute inset-0 rounded-[26px] border-[4px] border-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" />
-                    <div className="absolute inset-[16%] rounded-full border-[5px] border-white bg-white shadow-sm" />
-                    <div className={cn('absolute left-3 right-3 top-3 rounded-[16px] border px-3 py-2 backdrop-blur-[2px]', playerZoneTone(player))}>
+                  <div key={color} style={{ top, left, width, height }} className="absolute p-2 sm:p-3">
+                    <div className="absolute inset-0 rounded-[20px] border-[3px] border-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:rounded-[26px] sm:border-[4px]" />
+                    <div className="absolute inset-[16%] rounded-full border-[4px] border-white bg-white shadow-sm sm:border-[5px]" />
+                    <div className={cn('absolute left-2 right-2 top-2 rounded-[14px] border px-2 py-1.5 backdrop-blur-[2px] sm:left-3 sm:right-3 sm:top-3 sm:rounded-[16px] sm:px-3 sm:py-2', playerZoneTone(player))}>
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-9 h-9 rounded-full bg-white/85 border border-black/5 grid place-items-center text-[20px] shrink-0">
+                          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-black/5 bg-white/85 text-[16px] sm:h-9 sm:w-9 sm:text-[20px]">
                             {player?.avatar || '•'}
                           </div>
                           <div className="min-w-0">
-                            <div className="font-[700] text-[12.8px] truncate">{player?.name || 'Open seat'}</div>
-                            <div className="text-[11px] opacity-80">{player ? playerTypeLabel(player, user.id) : 'Waiting'}</div>
+                            <div className="truncate text-[10.5px] font-[700] sm:text-[12.8px]">{player?.name || 'Open seat'}</div>
+                            <div className="text-[9px] opacity-80 sm:text-[11px]">{player ? playerTypeLabel(player, user.id) : 'Waiting'}</div>
                           </div>
                         </div>
-                        {player && <div className="text-[11px] font-[700]">{handCountFor(player)}/4</div>}
+                        {player && <div className="text-[9px] font-[700] sm:text-[11px]">{handCountFor(player)}/4</div>}
                       </div>
                     </div>
                   </div>
@@ -1048,7 +1094,7 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
 
               <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2">
                 <div
-                  className="aspect-square w-[10%] min-w-[48px] max-w-[62px] rounded-[18px] border border-zinc-300 bg-[#fffdfa] shadow-[0_10px_22px_rgba(15,23,42,0.14)] dark:border-zinc-700 dark:bg-[#fffdfa]"
+                  className="aspect-square w-[10%] min-w-[42px] max-w-[54px] rounded-[16px] border border-zinc-300 bg-[#fffdfa] shadow-[0_10px_22px_rgba(15,23,42,0.14)] dark:border-zinc-700 dark:bg-[#fffdfa] sm:min-w-[48px] sm:max-w-[62px] sm:rounded-[18px]"
                   style={{ animation: isRolling ? 'ludo-dice-toss 720ms cubic-bezier(0.22, 1, 0.36, 1)' : undefined }}
                 >
                   <DiceFace value={diceFace} />
@@ -1089,7 +1135,7 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
                     <div className={cn('w-10 h-10 rounded-full border border-white shadow-sm grid place-items-center text-[20px]', side.sample ? COLOR_META[side.colors[0]].soft : 'bg-zinc-200')}>{side.sample?.avatar || '•'}</div>
                     <div className="min-w-0">
                       <div className="truncate font-[650] text-white">{side.sample?.name || 'Open seat'} {side.ownerId === currentOwnerId && liveWinner === null ? '• turn' : ''}</div>
-                      <div className="text-[12px] text-slate-500">{side.sample ? playerTypeLabel(side.sample, user.id) : 'Waiting'} • {side.colors.map((color) => COLOR_META[color].label).join(' + ')}</div>
+                      <div className="text-[12px] text-slate-400">{side.sample ? playerTypeLabel(side.sample, user.id) : 'Waiting'} • {side.colors.map((color) => COLOR_META[color].label).join(' + ')}</div>
                     </div>
                   </div>
                   <div className="text-right text-[12.5px] text-slate-400">
@@ -1105,24 +1151,25 @@ export function LudoRush({ stake, balance, user, challenge, onLockStake, onFinis
             <div className="mb-3 font-[660] text-white">Match details</div>
             <div className="grid grid-cols-2 gap-3 text-[13px]">
               <div className="rounded-[16px] border border-white/10 bg-white/[0.05] px-3 py-3">
-                <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Mode</div>
-                <div className="mt-1 font-[700] text-white">{mode === 'solo' ? 'Computer duel' : 'Friends table'}</div>
+                <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Mode</div>
+                <div className="mt-1 font-[700] text-white">{spectatorMode ? 'Spectator lounge' : mode === 'solo' ? 'Computer duel' : 'Friends table'}</div>
               </div>
               <div className="rounded-[16px] border border-white/10 bg-white/[0.05] px-3 py-3">
-                <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Stake</div>
+                <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Stake</div>
                 <div className="mt-1 font-[700] text-white">{liveStake ? money(liveStake) : 'Practice'}</div>
               </div>
               <div className="rounded-[16px] border border-white/10 bg-white/[0.05] px-3 py-3">
-                <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Seats</div>
+                <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Seats</div>
                 <div className="mt-1 font-[700] text-white">{sideCount} players</div>
               </div>
               <div className="rounded-[16px] border border-white/10 bg-white/[0.05] px-3 py-3">
-                <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Winner payout</div>
+                <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Winner payout</div>
                 <div className="mt-1 font-[700] text-white">{pot ? money(pot * 0.93) : '—'}</div>
               </div>
             </div>
             {challenge?.inviteCode && <div className="mt-3 text-[12.5px] text-slate-400">Invite code {challenge.inviteCode} • private room</div>}
           </GamePanel>
+          <GameChat challenge={challenge} user={user} />
         </div>
       </div>
     </GameScreen>

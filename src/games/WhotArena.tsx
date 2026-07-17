@@ -1,6 +1,8 @@
 import React from 'react';
+import { GameChat } from '../components/GameChat';
 import { Badge, Button, Field, Pill } from '../components/ui';
 import { GameHero, GamePanel, GameScreen, gameFieldClass, gameInfoCardClass, gameInfoTileClass, gamePillClass, gameSelectClass } from '../components/GameShell';
+import { PRIMARY_CURRENCY_LABEL } from '../lib/market';
 import { mockOnlinePlayers } from '../lib/mock';
 import { cn, money, shuffle } from '../lib/utils';
 import type { Challenge, MatchMode, User } from '../lib/types';
@@ -341,10 +343,10 @@ function WhotCardFace({
 }) {
   if (concealed) {
     return (
-      <div className="w-[74px] h-[104px] rounded-[18px] border border-zinc-300 bg-[linear-gradient(135deg,#1b1918,#3b3430)] text-white shadow-sm grid place-items-center">
+      <div className="grid h-[92px] w-[66px] place-items-center rounded-[16px] border border-zinc-300 bg-[linear-gradient(135deg,#1b1918,#3b3430)] text-white shadow-sm sm:h-[104px] sm:w-[74px] sm:rounded-[18px]">
         <div className="text-center">
-          <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-300">Whot</div>
-          <div className="mt-1 text-[24px] font-[800]">?</div>
+          <div className="text-[9px] uppercase tracking-[0.2em] text-zinc-300 sm:text-[10px] sm:tracking-[0.26em]">Whot</div>
+          <div className="mt-1 text-[21px] font-[800] sm:text-[24px]">?</div>
         </div>
       </div>
     );
@@ -360,7 +362,7 @@ function WhotCardFace({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        'w-[78px] h-[112px] rounded-[20px] border bg-gradient-to-br p-3 text-left shadow-[0_8px_24px_rgba(0,0,0,0.08)] transition',
+        'h-[100px] w-[70px] rounded-[18px] border bg-gradient-to-br p-2.5 text-left shadow-[0_8px_24px_rgba(0,0,0,0.08)] transition sm:h-[112px] sm:w-[78px] sm:rounded-[20px] sm:p-3',
         shapeStyle.bg,
         shapeStyle.border,
         shapeStyle.ink,
@@ -369,12 +371,12 @@ function WhotCardFace({
       )}
     >
       <div className="flex items-start justify-between">
-        <div className="text-[20px] font-[800] leading-none">{card.value}</div>
-        <div className="text-[18px]">{shapeStyle.symbol}</div>
+        <div className="text-[17px] font-[800] leading-none sm:text-[20px]">{card.value}</div>
+        <div className="text-[16px] sm:text-[18px]">{shapeStyle.symbol}</div>
       </div>
-      <div className="mt-6 text-[28px] font-[780] leading-none">{shapeStyle.symbol}</div>
-      <div className="mt-3 text-[11px] font-[650] uppercase tracking-[0.16em]">{shapeStyle.label}</div>
-      {card.shape === 'star' && <div className="mt-1 text-[10px] opacity-80">Counts {card.scoreValue}</div>}
+      <div className="mt-5 text-[24px] font-[780] leading-none sm:mt-6 sm:text-[28px]">{shapeStyle.symbol}</div>
+      <div className="mt-2 text-[10px] font-[650] uppercase tracking-[0.12em] sm:mt-3 sm:text-[11px] sm:tracking-[0.16em]">{shapeStyle.label}</div>
+      {card.shape === 'star' && <div className="mt-1 text-[9px] opacity-80 sm:text-[10px]">Counts {card.scoreValue}</div>}
     </button>
   );
 }
@@ -387,7 +389,7 @@ export function WhotArena({ stake, balance, challenge, user, onLockStake, onFini
   const [selectedFriendId, setSelectedFriendId] = React.useState<string>(
     challenge?.invitedUserId ?? challenge?.invitedUsers?.[0]?.id ?? mockOnlinePlayers.find((player) => player.game === 'whot')?.id ?? '',
   );
-  const [stakeInput, setStakeInput] = React.useState<number>(challenge?.stake ?? (stake > 0 ? stake : 4));
+  const [stakeInput, setStakeInput] = React.useState<number>(challenge?.stake ?? (stake > 0 ? stake : 4000));
   const [setupNote, setSetupNote] = React.useState<string>(
     challenge ? 'Review the table and lock your seat to begin.' : 'Choose solo or friends, set your stake, and start the round.',
   );
@@ -597,7 +599,7 @@ export function WhotArena({ stake, balance, challenge, user, onLockStake, onFini
 
             <div className="mt-5 grid md:grid-cols-2 gap-3">
               <Field
-                label={humanOnly ? 'Stake per player (USD)' : 'Solo stake (USD)'}
+                label={humanOnly ? `Stake per player (${PRIMARY_CURRENCY_LABEL})` : `Solo stake (${PRIMARY_CURRENCY_LABEL})`}
                 type="number"
                 value={stakeInput}
                 className={gameFieldClass}
@@ -637,19 +639,19 @@ export function WhotArena({ stake, balance, challenge, user, onLockStake, onFini
             <div className="mt-5 rounded-[26px] border border-white/10 bg-white/[0.05] p-4">
               <div className="grid sm:grid-cols-4 gap-3 text-[13px]">
                 <div className={gameInfoTileClass}>
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Your wallet</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Your wallet</div>
                   <div className="mt-1 text-[21px] font-[740] text-white">{money(balance)}</div>
                 </div>
                 <div className={gameInfoTileClass}>
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Players</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Players</div>
                   <div className="mt-1 text-[21px] font-[740] text-white">2 seats</div>
                 </div>
                 <div className={gameInfoTileClass}>
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Projected pot</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Projected pot</div>
                   <div className="mt-1 text-[21px] font-[740] text-white">{projectedPot ? money(projectedPot) : 'Practice'}</div>
                 </div>
                 <div className={gameInfoTileClass}>
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Winner payout</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Winner payout</div>
                   <div className="mt-1 text-[21px] font-[740] text-white">{projectedPot ? money(projectedPot * 0.93) : '—'}</div>
                 </div>
               </div>
@@ -685,6 +687,7 @@ export function WhotArena({ stake, balance, challenge, user, onLockStake, onFini
               </div>
             </div>
           </GamePanel>
+          <GameChat challenge={challenge} user={user} />
         </div>
       </GameScreen>
     );
@@ -708,11 +711,11 @@ export function WhotArena({ stake, balance, challenge, user, onLockStake, onFini
       </GameHero>
 
       <div className="grid lg:grid-cols-[minmax(360px,1.15fr)_360px] gap-6 items-start">
-        <GamePanel className="p-5 sm:p-6">
+        <GamePanel className="p-4 sm:p-6">
           {humanOnly && phase === 'handoff' && (
             <div className="mb-5 rounded-[24px] border border-white/10 bg-white/[0.05] px-4 py-4">
               <div className="text-[12px] uppercase tracking-[0.18em] text-slate-400">Pass device</div>
-              <div className="mt-2 text-[24px] tracking-tight text-white" style={{ fontFamily: 'Fraunces, serif', fontWeight: 620 }}>{viewerAvatar} {viewerName}'s hand is next.</div>
+              <div className="mt-2 text-[24px] font-[800] tracking-[-0.05em] text-white">{viewerAvatar} {viewerName}'s hand is next.</div>
               <div className="mt-2 text-[13.4px] leading-6 text-slate-300">Private cards stay hidden until the next player reveals them.</div>
               <div className="mt-4"><Button onClick={() => setPhase('playing')}>Reveal hand</Button></div>
             </div>
@@ -746,11 +749,11 @@ export function WhotArena({ stake, balance, challenge, user, onLockStake, onFini
               )}
             </div>
 
-            <div className="mt-5 grid sm:grid-cols-[1fr_1fr_1fr] gap-4 items-center">
+            <div className="mt-5 grid gap-4 items-center sm:grid-cols-[1fr_1fr_1fr]">
               <div className="rounded-[24px] border border-white/10 bg-white/[0.06] p-4">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Market</div>
                 <div className="mt-3 flex items-end gap-3">
-                  <div className="w-[84px] h-[116px] rounded-[20px] border border-zinc-300 bg-[linear-gradient(135deg,#10343a,#0f766e)] text-white grid place-items-center shadow-sm">
+                  <div className="grid h-[102px] w-[72px] place-items-center rounded-[18px] border border-zinc-300 bg-[linear-gradient(135deg,#10343a,#0f766e)] text-white shadow-sm sm:h-[116px] sm:w-[84px] sm:rounded-[20px]">
                     <div className="text-center">
                       <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-100">Deck</div>
                       <div className="mt-2 text-[26px] font-[800]">{state.market.length}</div>
@@ -814,7 +817,7 @@ export function WhotArena({ stake, balance, challenge, user, onLockStake, onFini
             </div>
 
             <div className="overflow-x-auto pb-2">
-              <div className="flex gap-3 min-w-max">
+              <div className="flex min-w-max gap-2.5 sm:gap-3">
                 {visibleHand.map((card) => (
                   <WhotCardFace
                     key={card.id}
@@ -832,18 +835,18 @@ export function WhotArena({ stake, balance, challenge, user, onLockStake, onFini
         <div className="space-y-4">
           <GamePanel className="p-5">
             <div className="mb-3 font-[680] text-white">Table pulse</div>
-            <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
               <div className="rounded-[18px] border border-white/10 bg-white/[0.05] py-3">
                 <div className="text-[21px] font-[760] tracking-tight text-white">{state.playerHand.length}</div>
-                <div className="text-[11.8px] text-slate-500">{names.player.name}</div>
+                <div className="text-[11.8px] text-slate-400">{names.player.name}</div>
               </div>
               <div className="rounded-[18px] border border-white/10 bg-white/[0.05] py-3">
                 <div className="text-[21px] font-[760] tracking-tight text-white">{state.botHand.length}</div>
-                <div className="text-[11.8px] text-slate-500">{names.bot.name}</div>
+                <div className="text-[11.8px] text-slate-400">{names.bot.name}</div>
               </div>
               <div className="rounded-[18px] border border-white/10 bg-white/[0.05] py-3">
                 <div className="text-[21px] font-[760] tracking-tight text-white">{countHandPoints(state.playerHand)}</div>
-                <div className="text-[11.8px] text-slate-500">{names.player.name} deadwood</div>
+                <div className="text-[11.8px] text-slate-400">{names.player.name} deadwood</div>
               </div>
             </div>
           </GamePanel>
@@ -880,6 +883,7 @@ export function WhotArena({ stake, balance, challenge, user, onLockStake, onFini
               Practice uses one fast round. Stake mode settles the same 7% platform rake as the other games.
             </div>
           </GamePanel>
+          <GameChat challenge={challenge} user={user} />
         </div>
       </div>
     </GameScreen>

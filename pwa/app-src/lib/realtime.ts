@@ -1,5 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
-import type { Challenge, ChallengeRoomState, LudoMatchState, User } from './types';
+import type { Challenge, ChallengeRoomState, LudoMatchState, RoomChatMessage, User } from './types';
 
 type PlayerIdentity = {
   id: string;
@@ -130,6 +130,46 @@ class RealtimeClient {
     return response.roomState ?? null;
   }
 
+  async spectateRoom(roomId: string, user: User) {
+    if (!this.socket?.connected) return null;
+    const response = await this.emitWithAck<{ ok: boolean; roomState?: ChallengeRoomState; error?: string }>('room:spectate', {
+      roomId,
+      user: toIdentity(user),
+    });
+    if (!response.ok) throw new Error(response.error || 'Unable to watch this room.');
+    return response.roomState ?? null;
+  }
+
+  async listRoomMessages(roomId: string) {
+    if (!this.socket?.connected) return [];
+    const response = await this.emitWithAck<{ ok: boolean; messages?: RoomChatMessage[]; error?: string }>('chat:list', {
+      roomId,
+    });
+    if (!response.ok) throw new Error(response.error || 'Unable to load room chat.');
+    return response.messages ?? [];
+  }
+
+  async sendRoomMessage(roomId: string, text: string) {
+    if (!this.socket?.connected) return null;
+    const response = await this.emitWithAck<{ ok: boolean; message?: RoomChatMessage; error?: string }>('chat:send', {
+      roomId,
+      text,
+    });
+    if (!response.ok) throw new Error(response.error || 'Unable to send this message.');
+    return response.message ?? null;
+  }
+
+  async supportRoomPlayer(roomId: string, userId: string, targetUserId?: string | null) {
+    if (!this.socket?.connected) return null;
+    const response = await this.emitWithAck<{ ok: boolean; roomState?: ChallengeRoomState; error?: string }>('room:support', {
+      roomId,
+      userId,
+      targetUserId: targetUserId ?? null,
+    });
+    if (!response.ok) throw new Error(response.error || 'Unable to update support right now.');
+    return response.roomState ?? null;
+  }
+
   async setRoomReady(roomId: string, userId: string, ready: boolean) {
     if (!this.socket?.connected) return null;
     const response = await this.emitWithAck<{ ok: boolean; roomState?: ChallengeRoomState; error?: string }>('room:ready', {
@@ -187,6 +227,11 @@ class RealtimeClient {
   onLudoState(handler: (matchState: LudoMatchState) => void) {
     this.socket?.on('ludo:state', handler);
     return () => this.socket?.off('ludo:state', handler);
+  }
+
+  onRoomMessage(handler: (message: RoomChatMessage) => void) {
+    this.socket?.on('chat:message', handler);
+    return () => this.socket?.off('chat:message', handler);
   }
 
   private emitWithAck<T>(event: string, payload?: unknown) {

@@ -1,7 +1,8 @@
 import React from 'react';
+import { GameChat } from '../components/GameChat';
 import { Badge, Button, Pill } from '../components/ui';
 import { GameHero, GamePanel, GameScreen, gamePillClass } from '../components/GameShell';
-import { generateWordRack } from '../lib/utils';
+import { generateWordRack, money } from '../lib/utils';
 import { canSpellFromTiles, localWordValid, wordScore } from '../lib/wordBank';
 import type { Challenge, User } from '../lib/types';
 
@@ -124,7 +125,7 @@ export function WordForge({ stake, challenge, user, onFinish, onExit }: Props) {
       <GameScreen className="max-w-3xl">
         <GamePanel className="p-6 sm:p-7">
           <Badge variant="gold">WordForge</Badge>
-          <h2 className="mt-4 text-[32px] tracking-tight text-white" style={{ fontFamily: 'Fraunces, serif', fontWeight: 620 }}>
+          <h2 className="mt-4 text-[32px] font-[800] tracking-[-0.05em] text-white">
             Friend room required.
           </h2>
           <div className="mt-3 text-[14px] leading-6 text-slate-300">
@@ -149,7 +150,7 @@ export function WordForge({ stake, challenge, user, onFinish, onExit }: Props) {
         exitLabel="Leave table"
       >
         <div className="flex flex-wrap gap-2">
-          <Badge variant="gold">Stake {stake ? `$${stake.toFixed(2)}` : 'Practice'}</Badge>
+          <Badge variant="gold">Stake {stake ? money(stake) : 'Practice'}</Badge>
           <Badge variant="emerald">2-player friend room</Badge>
           <Badge variant="default">
             {phase === 'playing' ? `${currentPlayer.avatar} ${currentPlayer.name} on the clock` : `${currentPlayer.avatar} ${currentPlayer.name} up next`}
@@ -162,7 +163,7 @@ export function WordForge({ stake, challenge, user, onFinish, onExit }: Props) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-[12px] uppercase tracking-[0.18em] text-slate-400">{phase === 'ready' ? 'Start round' : 'Pass device'}</div>
-              <div className="mt-2 text-[28px] tracking-tight text-white" style={{ fontFamily: 'Fraunces, serif', fontWeight: 620 }}>
+              <div className="mt-2 text-[28px] font-[800] tracking-[-0.05em] text-white">
                 {phase === 'ready' ? `${currentPlayer.name} to open.` : `${players[turnIndex + 1]?.name || 'Next player'} is up next.`}
               </div>
               <div className="mt-2 text-[13.5px] leading-6 text-slate-300">
@@ -184,8 +185,8 @@ export function WordForge({ stake, challenge, user, onFinish, onExit }: Props) {
       )}
 
       <div className="grid lg:grid-cols-[1.2fr_.8fr] gap-5">
-        <GamePanel className="p-6">
-          <div className="flex items-center justify-between">
+        <GamePanel className="p-5 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-[15px] text-slate-300">{currentPlayer.avatar} {currentPlayer.name}'s rack</div>
             <div className="text-[26px] font-[730] tracking-tight tabular-nums text-white">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</div>
           </div>
@@ -193,14 +194,14 @@ export function WordForge({ stake, challenge, user, onFinish, onExit }: Props) {
             {currentRound.rack.map((letter, index) => (
               <div
                 key={`${letter}-${index}`}
-                className="grid h-[68px] w-[56px] place-items-center rounded-[18px] border border-amber-200/60 bg-gradient-to-br from-amber-100 via-orange-100 to-amber-200 text-[26px] font-[750] text-[#352010] shadow-[0_10px_24px_rgba(251,191,36,0.14)]"
+                className="grid h-[56px] w-[44px] place-items-center rounded-[14px] border border-amber-200/60 bg-gradient-to-br from-amber-100 via-orange-100 to-amber-200 text-[22px] font-[750] text-[#352010] shadow-[0_10px_24px_rgba(251,191,36,0.14)] sm:h-[68px] sm:w-[56px] sm:rounded-[18px] sm:text-[26px]"
               >
                 {letter}
               </div>
             ))}
           </div>
 
-          <div className="mt-6 flex gap-2">
+          <div className="mt-6 flex flex-col gap-2 sm:flex-row">
             <input
               ref={inputRef}
               value={input}
@@ -210,14 +211,14 @@ export function WordForge({ stake, challenge, user, onFinish, onExit }: Props) {
               placeholder="Type a word…"
               className="flex-1 rounded-[18px] border border-white/10 bg-white/[0.06] px-4 py-4 text-[18px] tracking-wider text-white outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-300/20 disabled:opacity-50"
             />
-            <Button onClick={submit} disabled={phase !== 'playing'} className="px-6">Play</Button>
+            <Button onClick={submit} disabled={phase !== 'playing'} className="justify-center px-6">Play</Button>
           </div>
           <div className="mt-2 h-5 text-[13.4px] text-slate-400">{msg}</div>
 
           <div className="mt-5">
             <div className="mb-2 text-[12.8px] text-slate-400">Words found</div>
             <div className="flex flex-wrap gap-2 min-h-[44px]">
-              {currentRound.found.length === 0 && <span className="text-sm text-slate-500">None yet</span>}
+              {currentRound.found.length === 0 && <span className="text-sm text-slate-400">None yet</span>}
               {currentRound.found.map((foundWord) => (
                 <span key={foundWord.w} className="rounded-full border border-white/10 bg-white/[0.07] px-3 py-1.5 text-[13.3px] text-slate-100">
                   {foundWord.w} <b className="ml-1 text-amber-200">{foundWord.pts}</b>
@@ -252,6 +253,7 @@ export function WordForge({ stake, challenge, user, onFinish, onExit }: Props) {
               Each player gets a private rack and 60 seconds. No computer score is used here anymore.
             </div>
           </GamePanel>
+          <GameChat challenge={challenge} user={user} />
         </div>
       </div>
     </GameScreen>

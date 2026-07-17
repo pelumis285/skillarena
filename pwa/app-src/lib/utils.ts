@@ -1,9 +1,22 @@
+import {
+  PRIMARY_CURRENCY_CODE,
+  PRIMARY_LOCALE,
+} from './market';
+
 export function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(' ');
 }
 
+const currencyFormatter = new Intl.NumberFormat(PRIMARY_LOCALE, {
+  style: 'currency',
+  currency: PRIMARY_CURRENCY_CODE,
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 export function money(n: number) {
-  return n < 0 ? `-$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`;
+  const formatted = currencyFormatter.format(Math.abs(n));
+  return n < 0 ? `-${formatted}` : formatted;
 }
 
 export function timeAgo(iso: string) {

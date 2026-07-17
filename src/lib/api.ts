@@ -2,6 +2,11 @@ import type {
   AdminOverviewSnapshot,
   GameId,
   MatchRecord,
+  PaymentRecord,
+  PaymentRuntimeConfig,
+  ResolvedBankAccount,
+  SupportedBank,
+  Tournament,
   User,
   UserProfileSnapshot,
   WalletTx,
@@ -16,10 +21,45 @@ type AuthPayload = {
   balance: number;
 };
 
+type EmailVerificationRequestPayload = {
+  ok: true;
+  expiresInSeconds: number;
+  resendAvailableInSeconds: number;
+};
+
+type EmailVerificationConfirmPayload = {
+  ok: true;
+  verificationToken: string;
+  expiresInSeconds: number;
+};
+
+type PasswordResetRequestPayload = {
+  ok: true;
+  expiresInSeconds: number;
+  resendAvailableInSeconds: number;
+};
+
+type ProfileUpdatePayload = {
+  ok: true;
+  user: User;
+  profile: UserProfileSnapshot;
+};
+
 type WalletPayload = {
   ok: true;
   balance: number;
   transactions: WalletTx[];
+};
+
+type PaymentActionPayload = WalletPayload & {
+  payment: PaymentRecord;
+};
+
+type DepositInitializationPayload = {
+  ok: true;
+  payment: PaymentRecord;
+  accessCode: string;
+  authorizationUrl: string;
 };
 
 const REQUEST_TIMEOUT_MS = 20000;
@@ -126,12 +166,18 @@ class BetaApiClient {
   }
 
   async register(input: {
+    firstName: string;
+    lastName: string;
     email: string;
+    phone: string;
+    country: string;
+    dateOfBirth: string;
     username: string;
     password: string;
     displayName: string;
     avatar: string;
     referralCode?: string;
+    verificationToken: string;
   }) {
     return request<AuthPayload>('/api/auth/register', {
       method: 'POST',
@@ -139,8 +185,36 @@ class BetaApiClient {
     });
   }
 
-  async login(input: { email: string; password: string }) {
+  async requestEmailCode(input: { email: string; firstName?: string }) {
+    return request<EmailVerificationRequestPayload>('/api/auth/request-email-code', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async verifyEmailCode(input: { email: string; code: string }) {
+    return request<EmailVerificationConfirmPayload>('/api/auth/verify-email-code', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async login(input: { identifier: string; password: string }) {
     return request<AuthPayload>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async requestPasswordResetCode(input: { identifier: string }) {
+    return request<PasswordResetRequestPayload>('/api/auth/request-password-reset', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async resetPassword(input: { identifier: string; code: string; newPassword: string }) {
+    return request<AuthPayload>('/api/auth/reset-password', {
       method: 'POST',
       body: JSON.stringify(input),
     });
@@ -173,6 +247,93 @@ class BetaApiClient {
   async getProfile(userId: string) {
     const payload = await request<{ ok: true; profile: UserProfileSnapshot }>(`/api/users/${encodeURIComponent(userId)}/profile`);
     return payload.profile;
+  }
+
+  async updatePhone(userId: string, phone: string) {
+    return request<ProfileUpdatePayload>(`/api/users/${encodeURIComponent(userId)}/profile/phone`, {
+      method: 'PATCH',
+      body: JSON.stringify({ phone }),
+    });
+  }
+
+  async updateProfile(userId: string, input: {
+    displayName: string;
+    country: string;
+    phone: string;
+    avatar: string;
+    profileImage?: string | null;
+  }) {
+    return request<ProfileUpdatePayload>(`/api/users/${encodeURIComponent(userId)}/profile`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async updatePayoutDetails(userId: string, input: {
+    bankCode?: string;
+    bankName: string;
+    accountNumber: string;
+    accountName: string;
+  }) {
+    return request<ProfileUpdatePayload>(`/api/users/${encodeURIComponent(userId)}/profile/payout`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async getPaymentsConfig() {
+    const payload = await request<{ ok: true; config: PaymentRuntimeConfig }>('/api/payments/config');
+    return payload.config;
+  }
+
+  async listBanks() {
+    const payload = await request<{ ok: true; banks: SupportedBank[] }>('/api/payments/banks');
+    return payload.banks;
+  }
+
+  async resolveBankAccount(input: { bankCode: string; accountNumber: string }) {
+    const query = new URLSearchParams({
+      bankCode: input.bankCode,
+      accountNumber: input.accountNumber,
+    });
+    const payload = await request<{ ok: true; account: ResolvedBankAccount }>(`/api/payments/banks/resolve?${query.toString()}`);
+    return payload.account;
+  }
+
+  async initializeDeposit(input: { userId: string; amount: number }) {
+    return request<DepositInitializationPayload>('/api/payments/deposit/initialize', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async verifyPayment(input: { userId: string; reference: string }) {
+    return request<PaymentActionPayload>('/api/payments/verify', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async syncPayments(userId: string) {
+    const payload = await request<{ ok: true; balance: number; transactions: WalletTx[]; payments: PaymentRecord[] }>('/api/payments/sync', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+    return payload;
+  }
+
+  async requestWithdrawal(input: {
+    userId: string;
+    amount: number;
+    bankCode: string;
+    bankName: string;
+    accountNumber: string;
+    accountName: string;
+  }) {
+    return request<PaymentActionPayload>('/api/payments/withdrawals', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
   }
 
   async deposit(input: { userId: string; amount: number; description?: string }) {
@@ -210,6 +371,53 @@ class BetaApiClient {
   async getAdminOverview(userId: string) {
     const payload = await request<{ ok: true; overview: AdminOverviewSnapshot }>(`/api/admin/overview?userId=${encodeURIComponent(userId)}`);
     return payload.overview;
+  }
+
+  async listTournaments(userId?: string) {
+    const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    const payload = await request<{ ok: true; tournaments: Tournament[] }>(`/api/tournaments${query}`);
+    return payload.tournaments;
+  }
+
+  async createTournament(input: {
+    title: string;
+    game: GameId;
+    stake: number;
+    maxPlayers: number;
+    allowSpectators?: boolean;
+    creator: { id: string; name: string; avatar: string; rating: number };
+  }) {
+    const payload = await request<{ ok: true; tournament: Tournament }>('/api/tournaments', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return payload.tournament;
+  }
+
+  async joinTournament(tournamentId: string, user: Pick<User, 'id' | 'displayName' | 'avatar' | 'rating'>) {
+    const payload = await request<{ ok: true; tournament: Tournament }>(`/api/tournaments/${encodeURIComponent(tournamentId)}/join`, {
+      method: 'POST',
+      body: JSON.stringify({
+        user: {
+          id: user.id,
+          name: user.displayName,
+          avatar: user.avatar,
+          rating: user.rating,
+        },
+      }),
+    });
+    return payload.tournament;
+  }
+
+  async reportTournamentWinner(tournamentId: string, matchId: string, winnerUserId: string, actingUserId: string) {
+    const payload = await request<{ ok: true; tournament: Tournament }>(`/api/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}/report`, {
+      method: 'POST',
+      body: JSON.stringify({
+        winnerUserId,
+        actingUserId,
+      }),
+    });
+    return payload.tournament;
   }
 }
 

@@ -33,19 +33,19 @@ const HERO_ACCENTS: Record<Accent, { border: string; wash: string; orb: string }
 };
 
 export const gameFieldClass =
-  'bg-white/[0.06] border-white/10 text-white placeholder:text-slate-500 focus:border-indigo-400 focus:ring-[3px] focus:ring-indigo-400/20';
+  'border border-[rgba(255,255,255,0.08)] bg-[var(--surface-2)] text-white placeholder:text-[var(--muted)] focus:border-[rgba(184,250,51,0.42)] focus:ring-[3px] focus:ring-[rgba(184,250,51,0.16)]';
 
 export const gameSelectClass =
-  'w-full rounded-[18px] border border-white/10 bg-white/[0.06] px-4 py-3 text-[14px] text-white outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/20 disabled:opacity-60';
+  'w-full rounded-[18px] border border-[rgba(255,255,255,0.08)] bg-[var(--surface-2)] px-4 py-3 text-[14px] text-white outline-none transition focus:border-[rgba(184,250,51,0.42)] focus:ring-2 focus:ring-[rgba(184,250,51,0.16)] disabled:opacity-60';
 
 export const gameInfoCardClass =
-  'rounded-[22px] border border-white/10 bg-white/[0.05] px-4 py-4 text-slate-200';
+  'rounded-[22px] border border-[rgba(255,255,255,0.08)] bg-[var(--surface-2)] px-4 py-4 text-slate-200';
 
 export const gameInfoTileClass =
-  'rounded-[18px] border border-white/10 bg-white/[0.05] px-4 py-3';
+  'rounded-[18px] border border-[rgba(255,255,255,0.08)] bg-[var(--surface-2)] px-4 py-3';
 
 export const gamePillClass =
-  'border border-white/10 bg-white/[0.08] text-slate-100';
+  'border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.05)] text-slate-100';
 
 export const gameMutedTextClass = 'text-[13px] text-slate-400';
 
@@ -56,7 +56,7 @@ export function GameScreen({
   className?: string;
   children: React.ReactNode;
 }) {
-  return <div className={cn('mx-auto space-y-5 text-white', className)}>{children}</div>;
+  return <div className={cn('mx-auto w-full min-w-0 space-y-5 text-white', className)}>{children}</div>;
 }
 
 export function GameHero({
@@ -79,17 +79,14 @@ export function GameHero({
   const tone = HERO_ACCENTS[accent];
 
   return (
-    <GlassCard className={cn('relative overflow-hidden bg-[#091120]/94 p-5 sm:p-6', tone.border)}>
+    <GlassCard className={cn('relative overflow-hidden bg-[var(--bg-soft)] p-5 sm:p-6', tone.border)}>
       <div className={cn('pointer-events-none absolute inset-0 bg-gradient-to-br', tone.wash)} />
       <div className={cn('pointer-events-none absolute -right-12 top-[-3rem] h-36 w-36 rounded-full blur-3xl', tone.orb)} />
       <div className="relative">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">{eyebrow}</div>
-            <h1
-              className="mt-2 text-[30px] leading-[0.95] tracking-[-0.04em] text-white sm:text-[34px]"
-              style={{ fontFamily: 'Fraunces, serif', fontWeight: 620 }}
-            >
+            <h1 className="mt-2 text-[30px] font-[800] leading-[0.95] tracking-[-0.06em] text-white sm:text-[34px]">
               {title}
             </h1>
             <div className="mt-3 max-w-[34rem] text-[13.5px] leading-6 text-slate-300">{subtitle}</div>
@@ -112,7 +109,7 @@ export function GamePanel({
   children: React.ReactNode;
 }) {
   return (
-    <GlassCard className={cn('border-white/10 bg-[#081121]/86 p-5 text-white', className)}>
+    <GlassCard className={cn('border-[rgba(255,255,255,0.08)] bg-[var(--surface)] p-5 text-white', className)}>
       {children}
     </GlassCard>
   );

@@ -1,4 +1,5 @@
 import React from 'react';
+import { GameChat } from '../components/GameChat';
 import { Badge, Button, Pill } from '../components/ui';
 import { GameHero, GamePanel, GameScreen, gamePillClass } from '../components/GameShell';
 import { cn, money } from '../lib/utils';
@@ -301,11 +302,11 @@ export function ScrabbleSocial({ stake, challenge, user, onCreditRevealFee, onFi
       </GameHero>
 
       <div className="grid xl:grid-cols-[minmax(420px,1fr)_360px] gap-6 items-start">
-        <GamePanel className="p-5">
+        <GamePanel className="p-4 sm:p-5">
           {phase === 'handoff' && (
             <div className="mb-5 rounded-[24px] border border-white/10 bg-white/[0.05] px-4 py-4">
               <div className="text-[12px] uppercase tracking-[0.18em] text-slate-400">Next turn</div>
-              <div className="mt-2 text-[24px] tracking-tight text-white" style={{ fontFamily: 'Fraunces, serif', fontWeight: 620 }}>{players[turnIndex].avatar} {players[turnIndex].name}'s turn</div>
+              <div className="mt-2 text-[24px] font-[800] tracking-[-0.05em] text-white">{players[turnIndex].avatar} {players[turnIndex].name}'s turn</div>
               <div className="mt-2 text-[13.4px] leading-6 text-slate-300">Reveal the next rack when the phone is in the next player’s hands. Invite code: {challenge?.inviteCode || 'Open room'}</div>
               <div className="mt-4 flex gap-2">
                 <Button onClick={() => setPhase('playing')}>Reveal next rack</Button>
@@ -314,7 +315,7 @@ export function ScrabbleSocial({ stake, challenge, user, onCreditRevealFee, onFi
             </div>
           )}
 
-          <div className="grid grid-cols-15 gap-[2px] rounded-[28px] border border-white/10 bg-[#cfd8e8]/18 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]" style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))' }}>
+          <div className="grid grid-cols-15 gap-[1px] rounded-[22px] border border-white/10 bg-[#cfd8e8]/18 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:gap-[2px] sm:rounded-[28px] sm:p-2" style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))' }}>
             {board.flatMap((row, rowIndex) => row.map((cell, colIndex) => {
               const premium = premiumAt(rowIndex, colIndex);
               const key = `${rowIndex}-${colIndex}`;
@@ -326,7 +327,7 @@ export function ScrabbleSocial({ stake, challenge, user, onCreditRevealFee, onFi
                   key={key}
                   onClick={() => handleBoardClick(rowIndex, colIndex)}
                   className={cn(
-                    'aspect-square rounded-[7px] border text-center transition relative',
+                    'relative aspect-square rounded-[5px] border text-center transition sm:rounded-[7px]',
                     premiumClasses(premium),
                     activeCursor && phase === 'playing' && 'ring-2 ring-indigo-400/70',
                     shownTile ? 'border-slate-300 bg-white text-zinc-900 shadow-sm' : 'border-transparent',
@@ -334,20 +335,20 @@ export function ScrabbleSocial({ stake, challenge, user, onCreditRevealFee, onFi
                 >
                   {shownTile ? (
                     <div className="grid h-full place-items-center">
-                      <div className="text-[15px] font-[760] leading-none">{shownTile.letter}</div>
-                      <div className="text-[9px] text-zinc-500 leading-none">{shownTile.value}</div>
+                      <div className="text-[11px] font-[760] leading-none sm:text-[15px]">{shownTile.letter}</div>
+                      <div className="text-[7px] leading-none text-zinc-500 sm:text-[9px]">{shownTile.value}</div>
                     </div>
                   ) : (
-                    <span className="text-[9px] font-[700] uppercase tracking-[0.08em]">{premium === 'STAR' ? '★' : premium || ''}</span>
+                    <span className="text-[6px] font-[700] uppercase tracking-[0.04em] sm:text-[9px] sm:tracking-[0.08em]">{premium === 'STAR' ? '★' : premium || ''}</span>
                   )}
                 </button>
               );
             }))}
           </div>
 
-          <div className="mt-5 flex items-center justify-between gap-3">
+          <div className="mt-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-[13px] text-slate-300">{note}</div>
-            <div className="flex gap-2">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
               <Button variant="secondary" onClick={() => setDirection((value) => value === 'horizontal' ? 'vertical' : 'horizontal')}>
                 {direction === 'horizontal' ? 'Horizontal' : 'Vertical'}
               </Button>
@@ -364,13 +365,13 @@ export function ScrabbleSocial({ stake, challenge, user, onCreditRevealFee, onFi
                   onClick={() => setSelectedTileId((current) => current === tile.id ? null : tile.id)}
                   disabled={phase !== 'playing'}
                   className={cn(
-                    'h-[62px] w-[52px] rounded-[16px] border border-amber-200/65 bg-gradient-to-br from-amber-100 via-amber-50 to-orange-100 px-2 py-2 text-left text-[#34210f] shadow-[0_10px_24px_rgba(251,191,36,0.14)] transition',
+                    'h-[52px] w-[42px] rounded-[13px] border border-amber-200/65 bg-gradient-to-br from-amber-100 via-amber-50 to-orange-100 px-2 py-2 text-left text-[#34210f] shadow-[0_10px_24px_rgba(251,191,36,0.14)] transition sm:h-[62px] sm:w-[52px] sm:rounded-[16px]',
                     phase !== 'playing' && 'opacity-60',
                     selectedTileId === tile.id && 'ring-2 ring-emerald-400 -translate-y-1',
                   )}
                 >
-                  <div className="text-[21px] font-[780] leading-none">{tile.letter}</div>
-                  <div className="mt-2 text-[11px] text-[#6b4a1a]">{tile.value}</div>
+                  <div className="text-[17px] font-[780] leading-none sm:text-[21px]">{tile.letter}</div>
+                  <div className="mt-1 text-[10px] text-[#6b4a1a] sm:mt-2 sm:text-[11px]">{tile.value}</div>
                 </button>
               ))}
             </div>
@@ -425,6 +426,7 @@ export function ScrabbleSocial({ stake, challenge, user, onCreditRevealFee, onFi
               Scrabble is human-only here. Use Challenges to share the table link or invite code, then pass turns privately on device while realtime rooming handles the match setup.
             </div>
           </GamePanel>
+          <GameChat challenge={challenge} user={user} />
         </div>
       </div>
     </GameScreen>

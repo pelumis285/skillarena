@@ -5,8 +5,18 @@ export type User = {
   id: string;
   email: string;
   username: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  country: string;
+  dateOfBirth: string;
   displayName: string;
   avatar: string;
+  profileImage?: string | null;
+  payoutBankCode?: string | null;
+  payoutBankName?: string | null;
+  payoutAccountNumber?: string | null;
+  payoutAccountName?: string | null;
   rating: number;
   tier: 'Bronze' | 'Silver' | 'Gold' | 'Platinum' | 'Diamond' | 'Master';
   joinedAt: string;
@@ -91,6 +101,26 @@ export type ChallengeRoomState = {
   hostUserId: string;
   inviteCode?: string;
   state: 'waiting' | 'ready' | 'in_progress' | 'finished';
+  spectators?: Array<{
+    id: string;
+    name: string;
+    avatar: string;
+    rating?: number;
+    supportTargetUserId?: string | null;
+  }>;
+};
+
+export type RoomChatMessage = {
+  id: string;
+  roomId: string;
+  text: string;
+  sentAt: string;
+  sender: {
+    id: string;
+    name: string;
+    avatar: string;
+    rating?: number;
+  };
 };
 
 export type WalletTx = {
@@ -101,6 +131,58 @@ export type WalletTx = {
   description: string;
   game?: GameId;
   at: string;
+};
+
+export type PaymentProvider = 'paystack';
+export type PaymentKind = 'deposit' | 'withdrawal';
+export type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'abandoned';
+
+export type PaymentRecord = {
+  id: string;
+  provider: PaymentProvider;
+  kind: PaymentKind;
+  userId: string;
+  amount: number;
+  currency: 'NGN';
+  reference: string;
+  status: PaymentStatus;
+  description: string;
+  authorizationUrl?: string | null;
+  accessCode?: string | null;
+  providerTransactionId?: string | null;
+  transferRecipientCode?: string | null;
+  walletTransactionId?: string | null;
+  bankCode?: string | null;
+  bankName?: string | null;
+  accountNumber?: string | null;
+  accountName?: string | null;
+  failureReason?: string | null;
+  metadata?: Record<string, string | number | boolean | null> | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string | null;
+};
+
+export type PaymentRuntimeConfig = {
+  provider: PaymentProvider | null;
+  depositsEnabled: boolean;
+  withdrawalsEnabled: boolean;
+  inlineCheckoutEnabled: boolean;
+  supportedDepositChannels: Array<'card' | 'bank' | 'ussd' | 'bank_transfer'>;
+  message: string;
+};
+
+export type SupportedBank = {
+  code: string;
+  name: string;
+  slug?: string;
+};
+
+export type ResolvedBankAccount = {
+  accountNumber: string;
+  accountName: string;
+  bankCode: string;
+  bankName: string;
 };
 
 export type MatchRecord = {
@@ -133,6 +215,55 @@ export type Challenge = {
   invitedUsers?: ChallengeInviteTarget[];
   invitedEmails?: string[];
   inviteCode?: string;
+  source?: 'challenge' | 'tournament';
+  tournamentId?: string;
+  tournamentMatchId?: string;
+  allowSpectators?: boolean;
+};
+
+export type TournamentStatus = 'open' | 'live' | 'completed';
+export type TournamentMatchStatus = 'waiting' | 'ready' | 'in_progress' | 'finished';
+
+export type TournamentParticipant = {
+  id: string;
+  name: string;
+  avatar: string;
+  rating?: number;
+  joinedAt: string;
+};
+
+export type TournamentMatch = {
+  id: string;
+  roundIndex: number;
+  position: number;
+  seats: 2 | 4;
+  status: TournamentMatchStatus;
+  participants: TournamentParticipant[];
+  winnerUserId?: string | null;
+  challenge?: Challenge;
+};
+
+export type TournamentRound = {
+  index: number;
+  label: string;
+  matches: TournamentMatch[];
+};
+
+export type Tournament = {
+  id: string;
+  title: string;
+  game: GameId;
+  stake: number;
+  maxPlayers: number;
+  seatsPerMatch: 2 | 4;
+  createdAt: string;
+  status: TournamentStatus;
+  allowSpectators: boolean;
+  prizePool: number;
+  creator: { id: string; name: string; avatar: string; rating: number };
+  participants: TournamentParticipant[];
+  rounds: TournamentRound[];
+  currentRound: number;
 };
 
 export type OnlinePlayer = {
@@ -196,7 +327,13 @@ export type UserProfileSnapshot = {
 
 export type AdminUserSnapshot = {
   id: string;
+  email: string;
   username: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  country: string;
+  dateOfBirth: string;
   displayName: string;
   joinedAt: string;
   balance: number;

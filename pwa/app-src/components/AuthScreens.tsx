@@ -1,48 +1,85 @@
 import React from 'react';
 import { AVATARS } from '../lib/mock';
-import { Button, Field } from './ui';
+import { PRIMARY_COUNTRY } from '../lib/market';
+import { Button, Field, GlassCard, Pill } from './ui';
 
-export function AuthShell({ children, side }: { children: React.ReactNode, side?: React.ReactNode }) {
-  return (
-    <div className="app-safe-shell min-h-[100dvh] bg-[#f6f3ee] text-zinc-900 dark:bg-[#151210] dark:text-zinc-100" style={{fontFamily:'"Plus Jakarta Sans", system-ui, sans-serif'}}>
-      <div className="max-w-6xl mx-auto px-5 sm:px-10 lg:px-12 py-12 lg:py-20 grid lg:grid-cols-[1.06fr_.94fr] gap-12 items-center">
-        <div>
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-2xl bg-[#191818] text-white dark:bg-amber-50 dark:text-zinc-900 grid place-items-center font-[800] text-[16px]">C</div>
-            <div className="text-[19px] font-[750] tracking-tight">cerebrum</div>
-            <span className="text-[11px] text-zinc-500">Skill Arena</span>
-          </div>
-          {children}
-        </div>
-        <div className="hidden lg:block">
-          {side || <AuthPromo/>}
-        </div>
-      </div>
-    </div>
-  );
+export type RegistrationInput = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  country: string;
+  dateOfBirth: string;
+  username: string;
+  password: string;
+  referralCode?: string;
+};
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
+
+function normalizeRegistrationInput(input: RegistrationInput): RegistrationInput {
+  return {
+    firstName: input.firstName.trim().replace(/\s+/g, ' '),
+    lastName: input.lastName.trim().replace(/\s+/g, ' '),
+    email: input.email.trim().toLowerCase(),
+    phone: input.phone.trim(),
+    country: input.country.trim(),
+    dateOfBirth: input.dateOfBirth.trim(),
+    username: input.username.trim().toLowerCase(),
+    password: input.password.trim(),
+    referralCode: input.referralCode?.trim().toUpperCase() || undefined,
+  };
 }
 
-function AuthPromo() {
+function getAge(dateOfBirth: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) return null;
+  const parsed = new Date(`${dateOfBirth}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== dateOfBirth) return null;
+  const today = new Date();
+  let age = today.getUTCFullYear() - parsed.getUTCFullYear();
+  const monthDelta = today.getUTCMonth() - parsed.getUTCMonth();
+  const dayDelta = today.getUTCDate() - parsed.getUTCDate();
+  if (monthDelta < 0 || (monthDelta === 0 && dayDelta < 0)) age -= 1;
+  return age;
+}
+
+function validateRegistrationInput(input: RegistrationInput) {
+  if (input.firstName.length < 2) return 'Enter your first name.';
+  if (input.lastName.length < 2) return 'Enter your last name.';
+  if (!EMAIL_PATTERN.test(input.email)) return 'Enter a valid email address.';
+
+  const phoneDigits = input.phone.replace(/\D/g, '');
+  if (phoneDigits.length < 10) return 'Enter a working phone number.';
+
+  if (input.country.length < 2) return 'Enter your country or region.';
+
+  const age = getAge(input.dateOfBirth);
+  if (age === null) return 'Choose a valid date of birth.';
+  if (age < 18) return 'You must be at least 18 years old to register.';
+
+  if (!USERNAME_PATTERN.test(input.username)) {
+    return 'Username must be 3-20 characters using letters, numbers, or underscores.';
+  }
+
+  if (input.password.length < 8) return 'Password must be at least 8 characters.';
+  return null;
+}
+
+export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-[34px] bg-[#12100e] text-[#f5f1ea] dark:bg-zinc-900 p-10 min-h-[560px] relative overflow-hidden shadow-2xl">
-      <div className="text-[13px] uppercase tracking-wider text-[#d8cfc2]">Live arena</div>
-      <div className="mt-4 text-[46px] leading-[0.98] tracking-[-0.028em]" style={{fontFamily:'Fraunces, serif'}}>
-        Play classic skill<br/>games for real stakes.<br/>Win clean.
-      </div>
-      <div className="mt-5 text-[15px] text-[#d5ccc0] max-w-sm">Words • Chess • Ludo. Peer-to-peer challenges, escrowed pots, instant payouts. 7% platform rake.</div>
-      <div className="mt-10 grid grid-cols-3 gap-4 text-sm">
-        {[
-          {k:'4.2k', l:'Daily matches'},
-          {k:'$186k', l:'Paid out'},
-          {k:'98.4%', l:'Fair play'},
-        ].map(b=>(
-          <div key={b.l} className="rounded-[18px] bg-white/6 border border-white/10 px-4 py-4">
-            <div className="text-[22px] font-[700] tracking-tight">{b.k}</div>
-            <div className="text-[#d2c7b8] text-[12.5px]">{b.l}</div>
+    <div className="app-safe-shell min-h-[100dvh] bg-transparent text-[var(--text)]">
+      <div className="mx-auto min-h-[100dvh] w-full max-w-[430px] px-4 py-6 sm:px-6 sm:py-8">
+        <div className="flex items-center gap-4">
+          <div className="grid h-14 w-14 place-items-center rounded-[1.4rem] bg-[var(--lime)] text-[28px] font-[800] text-[#0a0f18] sm:h-16 sm:w-16 sm:rounded-[1.65rem] sm:text-[32px]">
+            C
           </div>
-        ))}
+          <div className="text-[28px] font-[800] tracking-[-0.04em] text-[var(--text)] sm:text-[32px]">cerebrum</div>
+        </div>
+        <div className="pt-10 sm:pt-14">
+          {children}
+        </div>
       </div>
-      <div className="absolute -right-10 -bottom-14 opacity-[.16] text-[220px]">♞</div>
     </div>
   );
 }
@@ -50,29 +87,149 @@ function AuthPromo() {
 export function LoginScreen({
   onLogin,
   onGoRegister,
+  onGoForgotPassword,
   busy = false,
+  initialIdentifier = '',
+  showDemo = false,
 }: {
-  onLogin:(credentials:{ email: string; password: string })=>void,
+  onLogin:(credentials:{ identifier: string; password: string })=>void,
   onGoRegister: ()=>void,
+  onGoForgotPassword: (identifier: string)=>void,
   busy?: boolean,
+  initialIdentifier?: string,
+  showDemo?: boolean,
 }) {
-  const [email,setEmail] = React.useState('player@cerebrum.test');
-  const [pw,setPw] = React.useState('password');
+  const [identifier, setIdentifier] = React.useState(initialIdentifier);
+  const [password, setPassword] = React.useState('');
+
+  React.useEffect(() => {
+    setIdentifier(initialIdentifier);
+  }, [initialIdentifier]);
+
   return (
     <AuthShell>
-      <h1 className="text-[44px] sm:text-[53px] leading-[0.97] tracking-[-0.028em] font-[650]" style={{fontFamily:'Fraunces, serif'}}>Welcome back to the parlor.</h1>
-      <p className="mt-3 text-zinc-600 dark:text-zinc-400 max-w-md">Log in to challenge, stake, and collect. Funds are held in escrow until results are verified.</p>
-      <div className="mt-8 max-w-md space-y-4">
-        <Field label="Email" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com"/>
-        <Field label="Password" type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••"/>
-        <Button className="w-full py-3.5 text-[15px]" onClick={()=>onLogin({ email, password: pw })} disabled={busy}>
+      <div className="skill-wordmark">CEREBRUM</div>
+      <h1 className="mt-6 skill-screen-title">Welcome back</h1>
+      <p className="mt-3 skill-screen-subtitle">Sign in with your real email or username to continue to your arena.</p>
+
+      <div className="mt-12 space-y-8">
+        <Field label="Email or username" value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="player@email.com or samuel285" autoComplete="username" />
+        <Field label="Password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" autoComplete="current-password" />
+
+        <Button size="lg" fullWidth onClick={() => onLogin({ identifier, password })} disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </Button>
-        <div className="text-sm text-zinc-600 dark:text-zinc-400">New to Cerebrum? <button onClick={onGoRegister} className="underline underline-offset-4">Create account</button></div>
+
+        <div className="text-center">
+          <button type="button" onClick={() => onGoForgotPassword(identifier)} className="text-[16px] font-[700] text-[var(--lime)]">
+            Forgot password?
+          </button>
+        </div>
+
+        <GlassCard className="rounded-[1.9rem] border-white/8 bg-white/[0.05] p-5 text-left">
+          <div className="text-[16px] font-[800] tracking-[-0.03em] text-white">Sign-in tips</div>
+          <div className="mt-3 text-[15px] text-slate-300">Use the same email or username you registered with. If your account is not in the server yet, create it again or reset the password once SMTP is configured.</div>
+        </GlassCard>
+
+        {showDemo ? (
+          <Button variant="secondary" size="lg" fullWidth onClick={() => onLogin({ identifier: 'player@cerebrum.test', password: 'password' })}>
+            Enter demo arena
+          </Button>
+        ) : null}
       </div>
-      <div className="mt-6 text-[11.8px] text-zinc-500">If the beta backend is running, this signs into the real shared test app. Otherwise it falls back to local demo mode.</div>
+
+      <button type="button" onClick={onGoRegister} className="mt-12 block w-full text-center text-[18px] font-[700] text-[var(--lime)]">
+        New player? Create an account
+      </button>
     </AuthShell>
-  )
+  );
+}
+
+export function ForgotPasswordRequestScreen({
+  onBack,
+  onSendCode,
+  busy = false,
+  initialIdentifier = '',
+}: {
+  onBack: ()=>void;
+  onSendCode: (identifier: string)=>void;
+  busy?: boolean;
+  initialIdentifier?: string;
+}) {
+  const [identifier, setIdentifier] = React.useState(initialIdentifier);
+
+  React.useEffect(() => {
+    setIdentifier(initialIdentifier);
+  }, [initialIdentifier]);
+
+  return (
+    <AuthShell>
+      <div className="skill-wordmark">CEREBRUM</div>
+      <h1 className="mt-6 skill-screen-title">Reset your password</h1>
+      <p className="mt-3 skill-screen-subtitle">Enter the email or username tied to your player account and we’ll send a 6-digit recovery code.</p>
+
+      <div className="mt-10 space-y-6">
+        <Field label="Email or username" value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="player@email.com or samuel285" autoComplete="username" />
+
+        <Button size="lg" fullWidth onClick={() => onSendCode(identifier)} disabled={busy}>
+          {busy ? 'Sending code…' : 'Send reset code'}
+        </Button>
+        <Button variant="secondary" size="lg" fullWidth onClick={onBack}>Back to sign in</Button>
+      </div>
+    </AuthShell>
+  );
+}
+
+export function ResetPasswordScreen({
+  identifier,
+  onBack,
+  onResend,
+  onReset,
+  busy = false,
+}: {
+  identifier: string;
+  onBack: ()=>void;
+  onResend: ()=>void;
+  onReset: (payload: { code: string; newPassword: string; confirmPassword: string })=>void;
+  busy?: boolean;
+}) {
+  const [code, setCode] = React.useState('');
+  const [newPassword, setNewPassword] = React.useState('');
+  const [confirmPassword, setConfirmPassword] = React.useState('');
+
+  React.useEffect(() => {
+    setCode('');
+    setNewPassword('');
+    setConfirmPassword('');
+  }, [identifier]);
+
+  return (
+    <AuthShell>
+      <div className="skill-wordmark">CEREBRUM</div>
+      <h1 className="mt-6 skill-screen-title">Choose a new password</h1>
+      <p className="mt-3 skill-screen-subtitle">Enter the 6-digit code sent to the account behind <span className="font-[700] text-white">{identifier}</span>, then set a new password.</p>
+
+      <div className="mt-10 space-y-6">
+        <Field
+          label="Reset code"
+          value={code}
+          onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+          placeholder="123456"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+        />
+        <Field label="New password" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="At least 8 characters" autoComplete="new-password" />
+        <Field label="Confirm password" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Repeat the new password" autoComplete="new-password" />
+
+        <Button size="lg" fullWidth onClick={() => onReset({ code, newPassword, confirmPassword })} disabled={busy}>
+          {busy ? 'Resetting…' : 'Reset password and sign in'}
+        </Button>
+        <Button variant="secondary" size="lg" fullWidth onClick={onResend} disabled={busy}>Resend code</Button>
+        <Button variant="secondary" size="lg" fullWidth onClick={onBack}>Back to sign in</Button>
+      </div>
+    </AuthShell>
+  );
 }
 
 export function RegisterScreen({
@@ -81,115 +238,300 @@ export function RegisterScreen({
   busy = false,
   initialValues,
 }: {
-  onNext:(payload:{ email: string; username: string; password: string; referralCode?: string })=>void,
+  onNext:(payload: RegistrationInput)=>void,
   onGoLogin:()=>void,
   busy?: boolean,
-  initialValues?: { email?: string; username?: string; password?: string; referralCode?: string },
+  initialValues?: Partial<RegistrationInput>,
 }) {
-  const [email,setEmail]=React.useState(initialValues?.email ?? '');
-  const [username,setUsername]=React.useState(initialValues?.username ?? '');
-  const [pw,setPw]=React.useState(initialValues?.password ?? '');
+  const [firstName, setFirstName] = React.useState(initialValues?.firstName ?? '');
+  const [lastName, setLastName] = React.useState(initialValues?.lastName ?? '');
+  const [email, setEmail] = React.useState(initialValues?.email ?? '');
+  const [phone, setPhone] = React.useState(initialValues?.phone ?? '');
+  const [country, setCountry] = React.useState(initialValues?.country ?? PRIMARY_COUNTRY);
+  const [dateOfBirth, setDateOfBirth] = React.useState(initialValues?.dateOfBirth ?? '');
+  const [username, setUsername] = React.useState(initialValues?.username ?? '');
+  const [password, setPassword] = React.useState(initialValues?.password ?? '');
   const [referralCode, setReferralCode] = React.useState(initialValues?.referralCode ?? '');
+  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    setFirstName(initialValues?.firstName ?? '');
+    setLastName(initialValues?.lastName ?? '');
     setEmail(initialValues?.email ?? '');
+    setPhone(initialValues?.phone ?? '');
+    setCountry(initialValues?.country ?? PRIMARY_COUNTRY);
+    setDateOfBirth(initialValues?.dateOfBirth ?? '');
     setUsername(initialValues?.username ?? '');
-    setPw(initialValues?.password ?? '');
+    setPassword(initialValues?.password ?? '');
     setReferralCode(initialValues?.referralCode ?? '');
-  }, [initialValues?.email, initialValues?.password, initialValues?.referralCode, initialValues?.username]);
+    setError(null);
+  }, [
+    initialValues?.country,
+    initialValues?.dateOfBirth,
+    initialValues?.email,
+    initialValues?.firstName,
+    initialValues?.lastName,
+    initialValues?.password,
+    initialValues?.phone,
+    initialValues?.referralCode,
+    initialValues?.username,
+  ]);
+
+  const handleContinue = () => {
+    const nextPayload = normalizeRegistrationInput({
+      firstName,
+      lastName,
+      email,
+      phone,
+      country,
+      dateOfBirth,
+      username,
+      password,
+      referralCode,
+    });
+    const validationError = validateRegistrationInput(nextPayload);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError(null);
+    onNext(nextPayload);
+  };
 
   return (
     <AuthShell>
-      <h1 className="text-[44px] sm:text-[53px] leading-[0.97] tracking-[-0.028em] font-[650]" style={{fontFamily:'Fraunces, serif'}}>Create your player account</h1>
-      <p className="mt-3 text-zinc-600 dark:text-zinc-400 max-w-md">Takes 45 seconds. Secure Stripe payouts, instant matchmaking.</p>
-      <div className="mt-7 max-w-md space-y-4">
-        <Field label="Email" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com"/>
-        <Field label="Username" value={username} onChange={e=>setUsername(e.target.value)} placeholder="chesscat" />
-        <Field label="Password" type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 8 characters"/>
-        <Field label="Referral code (optional)" value={referralCode} onChange={e=>setReferralCode(e.target.value.toUpperCase())} placeholder="FRIEND1234" />
+      <div className="skill-wordmark">CEREBRUM</div>
+      <h1 className="mt-6 skill-screen-title">Create your player account</h1>
+      <p className="mt-3 skill-screen-subtitle">Use real account details so payouts, recovery, and referrals are tied to the right player.</p>
+
+      <GlassCard className="mt-8 rounded-[1.8rem] border-white/10 bg-white/[0.05] p-4 text-[13px] text-slate-300">
+        Your legal name, phone, country, and date of birth help protect balances, referrals, and future withdrawals.
+      </GlassCard>
+
+      <div className="mt-8 space-y-6">
+        <div className="grid gap-6 sm:grid-cols-2">
+          <Field label="First name" value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="Samuel" autoComplete="given-name" />
+          <Field label="Last name" value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Oluwapelumi" autoComplete="family-name" />
+        </div>
+
+        <Field label="Email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="player@email.com" autoComplete="email" />
+
+        <div className="grid gap-6 sm:grid-cols-2">
+          <Field label="Phone number" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+234 801 234 5678" autoComplete="tel" />
+          <Field label="Country / region" value={country} onChange={(event) => setCountry(event.target.value)} placeholder={PRIMARY_COUNTRY} autoComplete="country-name" />
+        </div>
+
+        <Field label="Date of birth" type="date" value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} />
+
+        <div className="grid gap-6 sm:grid-cols-2">
+          <Field label="Username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="samuel285" autoComplete="username" />
+          <Field label="Password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Create a password" autoComplete="new-password" />
+        </div>
+
+        <Field label="Referral code" value={referralCode} onChange={(event) => setReferralCode(event.target.value.toUpperCase())} placeholder="Optional" />
+
+        {error && (
+          <GlassCard className="rounded-[1.7rem] border-[#5e1f2a] bg-[#4e1823] p-4 text-[14px] text-[#f0d5da]">
+            {error}
+          </GlassCard>
+        )}
+
         <Button
-          className="w-full py-3.5 text-[15px]"
-          onClick={()=>onNext({
-            email: email || 'new@cerebrum.test',
-            username: username || 'newplayer',
-            password: pw || 'password',
-            referralCode: referralCode.trim() || undefined,
-          })}
+          size="lg"
+          fullWidth
           disabled={busy}
+          onClick={handleContinue}
         >
-          {busy ? 'Saving…' : 'Continue'}
+          {busy ? 'Saving…' : 'Review details'}
         </Button>
-        <div className="text-sm text-zinc-600 dark:text-zinc-400">Already have an account? <button type="button" onClick={onGoLogin} className="underline underline-offset-4">Sign in</button></div>
-        <div className="text-[11.5px] text-zinc-500">By creating an account you agree to our fair-play policy and 18+ skill-gaming terms.</div>
+      </div>
+
+      <div className="mt-10 text-center text-[16px] text-[var(--muted)]">
+        Already have an account?{' '}
+        <button type="button" onClick={onGoLogin} className="font-[700] text-[var(--lime)]">
+          Sign in
+        </button>
       </div>
     </AuthShell>
-  )
+  );
 }
 
-export function VerifyScreen({ email, onVerified }: { email:string, onVerified:()=>void }) {
-  const [code,setCode] = React.useState(['','','','','','']);
-  const inputs = React.useRef<Array<HTMLInputElement|null>>([]);
-  const setDigit = (idx:number,v:string) => {
-    if(!/^\d?$/.test(v)) return;
-    const n=[...code]; n[idx]=v; setCode(n);
-    if(v && idx<5) inputs.current[idx+1]?.focus();
-  };
-  const full = code.join('');
+export function VerifyScreen({
+  draft,
+  onVerified,
+  onResend,
+  onBack,
+  busy = false,
+  emailVerificationRequired = true,
+}: {
+  draft: RegistrationInput;
+  onVerified:(code: string)=>void;
+  onResend:()=>void;
+  onBack:()=>void;
+  busy?: boolean;
+  emailVerificationRequired?: boolean;
+}) {
+  const legalName = [draft.firstName, draft.lastName].filter(Boolean).join(' ');
+  const [code, setCode] = React.useState('');
+
+  React.useEffect(() => {
+    setCode('');
+  }, [draft.email]);
+
+  const normalizedCode = code.replace(/\D/g, '').slice(0, 6);
   return (
     <AuthShell>
-      <h1 className="text-[44px] sm:text-[53px] leading-[0.97] tracking-[-0.028em] font-[650]" style={{fontFamily:'Fraunces, serif'}}>Check your email</h1>
-      <p className="mt-3 text-zinc-600 dark:text-zinc-400 max-w-md">We sent a 6-digit verification code to <b>{email}</b>. Enter it below.</p>
-      <div className="mt-7 flex gap-2">
-        {code.map((d,i)=>(
-          <input key={i} ref={el=> { inputs.current[i]=el }} value={d} onChange={e=>setDigit(i,e.target.value)} className="w-12 h-14 text-center rounded-[16px] bg-[#f2efe9] border border-zinc-200 text-[22px] font-[650] focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-800 dark:border-zinc-700"/>
-        ))}
+      <div className="skill-wordmark">CEREBRUM</div>
+      <h1 className="mt-6 skill-screen-title">{emailVerificationRequired ? 'Verify your email' : 'Review your account'}</h1>
+      <p className="mt-3 skill-screen-subtitle">
+        {emailVerificationRequired
+          ? `We sent a 6-digit code to ${draft.email}. Enter it here before you build your player card.`
+          : 'Make sure these signup details are correct before you build your player card.'}
+      </p>
+
+      <GlassCard className="mt-10 rounded-[2rem] p-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          {[
+            { label: 'Legal name', value: legalName },
+            { label: 'Email', value: draft.email },
+            { label: 'Phone', value: draft.phone },
+            { label: 'Country', value: draft.country },
+            { label: 'Date of birth', value: draft.dateOfBirth },
+            { label: 'Username', value: `@${draft.username}` },
+          ].map((row) => (
+            <div key={row.label} className="rounded-[1.4rem] border border-white/8 bg-white/[0.04] p-4">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{row.label}</div>
+              <div className="mt-2 text-[15px] font-[760] text-white">{row.value}</div>
+            </div>
+          ))}
+          {draft.referralCode && (
+            <div className="rounded-[1.4rem] border border-white/8 bg-white/[0.04] p-4 sm:col-span-2">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Referral code</div>
+              <div className="mt-2 text-[15px] font-[760] text-white">{draft.referralCode}</div>
+            </div>
+          )}
+        </div>
+        <div className="mt-5 text-[13px] text-slate-300">
+          {emailVerificationRequired
+            ? 'We use your verified email for account recovery, security checks, payouts, and referral support.'
+            : 'We use these details for account recovery, fair-play checks, payouts, and referral support.'}
+        </div>
+      </GlassCard>
+
+      {emailVerificationRequired && (
+        <div className="mt-8 space-y-4">
+          <Field
+            label="Verification code"
+            value={normalizedCode}
+            onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && normalizedCode.length === 6 && !busy) {
+                event.preventDefault();
+                onVerified(normalizedCode);
+              }
+            }}
+            placeholder="123456"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+          />
+        </div>
+      )}
+
+      <div className="mt-8 space-y-3">
+        <Button
+          size="lg"
+          fullWidth
+          disabled={busy || (emailVerificationRequired && normalizedCode.length !== 6)}
+          onClick={() => onVerified(normalizedCode)}
+        >
+          {busy
+            ? (emailVerificationRequired ? 'Checking code…' : 'Saving…')
+            : (emailVerificationRequired ? 'Verify & continue' : 'Continue to player card')}
+        </Button>
+        {emailVerificationRequired && (
+          <Button variant="secondary" size="lg" fullWidth disabled={busy} onClick={onResend}>
+            Resend code
+          </Button>
+        )}
+        <Button variant="secondary" size="lg" fullWidth onClick={onBack}>Edit details</Button>
       </div>
-      <div className="mt-5 flex gap-3">
-        <Button disabled={full.length!==6} onClick={onVerified}>Verify & continue</Button>
-        <Button variant="soft" onClick={onVerified}>Paste demo code</Button>
-      </div>
-      <div className="mt-3 text-[12.7px] text-zinc-500">Demo: any 6 digits will work.</div>
     </AuthShell>
-  )
+  );
 }
 
 export function OnboardScreen({
   onDone,
   busy = false,
+  initialDisplayName,
 }:{
   onDone:(profile:{displayName:string, avatar:string})=>void,
   busy?: boolean,
+  initialDisplayName?: string,
 }) {
-  const [displayName,setDisplayName] = React.useState('Archer');
-  const [avatar,setAvatar] = React.useState(AVATARS[0]);
+  const [displayName, setDisplayName] = React.useState(initialDisplayName ?? 'Samuel A.');
+  const [avatar, setAvatar] = React.useState(AVATARS[0]);
+  const interestPills = [
+    { label: 'Words', className: 'bg-[var(--purple)] text-white' },
+    { label: 'Chess', className: 'bg-[var(--blue)] text-white' },
+    { label: 'Ludo', className: 'bg-[var(--orange)] text-white' },
+  ];
+
+  React.useEffect(() => {
+    setDisplayName(initialDisplayName ?? 'Samuel A.');
+  }, [initialDisplayName]);
+
   return (
-    <AuthShell side={
-      <div className="rounded-[34px] bg-[#f1ebe3] text-zinc-900 p-10 min-h-[560px] dark:bg-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-800">
-        <div className="text-[13px] uppercase tracking-wider text-zinc-500">Profile</div>
-        <div className="mt-16 flex flex-col items-center">
-          <div className="text-[86px]">{avatar}</div>
-          <div className="mt-3 text-[26px] font-[720]" style={{fontFamily:'Fraunces, serif'}}>{displayName || 'Your name'}</div>
-          <div className="text-zinc-600 dark:text-zinc-400">Starting tier • Bronze III</div>
+    <AuthShell>
+      <div className="skill-wordmark">CEREBRUM</div>
+      <h1 className="mt-6 skill-screen-title">Build your player card</h1>
+      <p className="mt-3 skill-screen-subtitle">This is how opponents will see you.</p>
+
+      <div className="mt-12">
+        <div className="mb-4 text-[18px] font-[700] text-[var(--muted)]">Choose an avatar</div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+          {AVATARS.slice(0, 4).map((entry) => (
+            <button
+              type="button"
+              key={entry}
+              onClick={() => setAvatar(entry)}
+              className={entry === avatar ? 'grid h-28 place-items-center rounded-[1.6rem] bg-[var(--lime)] text-[50px] sm:h-36 sm:rounded-[2rem] sm:text-[58px]' : 'grid h-28 place-items-center rounded-[1.6rem] bg-[var(--surface-2)] text-[44px] sm:h-36 sm:rounded-[2rem] sm:text-[52px]'}
+            >
+              {entry}
+            </button>
+          ))}
         </div>
       </div>
-    }>
-      <h1 className="text-[44px] sm:text-[53px] leading-[0.97] tracking-[-0.028em] font-[650]" style={{fontFamily:'Fraunces, serif'}}>Set up your player card</h1>
-      <p className="mt-3 text-zinc-600 dark:text-zinc-400 max-w-md">This is how opponents will see you in the Arena.</p>
-      <div className="mt-7 max-w-md space-y-5">
-        <Field label="Display name" value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="Your display name"/>
-        <div>
-          <div className="text-zinc-600 mb-2 font-[550] text-[12.8px] dark:text-zinc-400">Choose an avatar</div>
-          <div className="grid grid-cols-6 gap-2">
-            {AVATARS.map(a=>(
-              <button type="button" key={a} onClick={()=>setAvatar(a)} className={"text-[24px] rounded-2xl h-12 bg-[#f2efe9] border transition dark:bg-zinc-800 " + (avatar===a ? 'border-zinc-900 dark:border-amber-300 scale-[1.04]' : 'border-zinc-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-700/80')}>{a}</button>
-            ))}
+
+      <div className="mt-10">
+        <Field label="Display name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Samuel A." />
+      </div>
+
+      <div className="mt-10">
+        <div className="mb-4 text-[18px] font-[700] text-[var(--muted)]">Skill interests</div>
+        <div className="flex flex-wrap gap-4">
+          {interestPills.map((pill) => (
+            <Pill key={pill.label} className={`px-7 py-4 text-[18px] font-[700] ${pill.className}`}>{pill.label}</Pill>
+          ))}
+        </div>
+      </div>
+
+      <GlassCard className="mt-10 p-5 sm:p-6">
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:gap-5">
+          <div className="text-[54px] sm:text-[62px]">{avatar}</div>
+          <div>
+            <div className="text-[32px] font-[800] tracking-[-0.05em] sm:text-[38px]">{displayName || 'Your name'}</div>
+            <div className="mt-2 text-[15px] text-[var(--muted)] sm:text-[17px]">New challenger • 1200 rating</div>
           </div>
         </div>
-        <Button className="w-full py-3.5 text-[15px]" onClick={()=>onDone({displayName, avatar})} disabled={busy}>
-          {busy ? 'Entering…' : 'Enter the Arena'}
+        <div className="mt-8 text-[16px] font-[700] text-[var(--lime)] sm:mt-10 sm:text-[18px]">Your rating grows from verified matches.</div>
+      </GlassCard>
+
+      <div className="mt-12">
+        <Button size="lg" fullWidth onClick={() => onDone({ displayName, avatar })} disabled={busy}>
+          {busy ? 'Entering…' : 'Enter the arena'}
         </Button>
-        <div className="text-[12px] text-zinc-500">You’ll start with $25 welcome credits.</div>
       </div>
     </AuthShell>
-  )
+  );
 }

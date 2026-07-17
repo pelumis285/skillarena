@@ -1,7 +1,9 @@
 import React from 'react';
 import { Chess, type Move } from 'chess.js';
+import { GameChat } from '../components/GameChat';
 import { Badge, Button, Field, Pill } from '../components/ui';
 import { GameHero, GamePanel, GameScreen, gameFieldClass, gameInfoCardClass, gameInfoTileClass, gamePillClass, gameSelectClass } from '../components/GameShell';
+import { PRIMARY_CURRENCY_LABEL } from '../lib/market';
 import { mockOnlinePlayers } from '../lib/mock';
 import { cn, money } from '../lib/utils';
 import type { Challenge, MatchMode, User } from '../lib/types';
@@ -55,7 +57,7 @@ export function ChessArena({ stake, balance, challenge, user, onLockStake, onFin
   const [selectedFriendId, setSelectedFriendId] = React.useState<string>(
     challenge?.invitedUserId ?? challenge?.invitedUsers?.[0]?.id ?? mockOnlinePlayers.find((player) => player.game === 'chess')?.id ?? '',
   );
-  const [stakeInput, setStakeInput] = React.useState<number>(challenge?.stake ?? (stake > 0 ? stake : 5));
+  const [stakeInput, setStakeInput] = React.useState<number>(challenge?.stake ?? (stake > 0 ? stake : 10000));
   const [setupNote, setSetupNote] = React.useState<string>(
     challenge ? 'Review the table and lock your seat to begin.' : 'Choose solo or friends, set your stake, and start the board.',
   );
@@ -294,7 +296,7 @@ export function ChessArena({ stake, balance, challenge, user, onLockStake, onFin
 
             <div className="mt-5 grid md:grid-cols-2 gap-3">
               <Field
-                label={humanOnly ? 'Stake per player (USD)' : 'Solo stake (USD)'}
+                label={humanOnly ? `Stake per player (${PRIMARY_CURRENCY_LABEL})` : `Solo stake (${PRIMARY_CURRENCY_LABEL})`}
                 type="number"
                 value={stakeInput}
                 className={gameFieldClass}
@@ -334,26 +336,26 @@ export function ChessArena({ stake, balance, challenge, user, onLockStake, onFin
             <div className="mt-5 rounded-[26px] border border-white/10 bg-white/[0.05] p-4">
               <div className="grid sm:grid-cols-4 gap-3 text-[13px]">
                 <div className={gameInfoTileClass}>
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Your wallet</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Your wallet</div>
                   <div className="mt-1 text-[21px] font-[740] text-white">{money(balance)}</div>
                 </div>
                 <div className={gameInfoTileClass}>
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Clock</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Clock</div>
                   <div className="mt-1 text-[21px] font-[740] text-white">5+0 blitz</div>
                 </div>
                 <div className={gameInfoTileClass}>
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Projected pot</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Projected pot</div>
                   <div className="mt-1 text-[21px] font-[740] text-white">{projectedPot ? money(projectedPot) : 'Practice'}</div>
                 </div>
                 <div className={gameInfoTileClass}>
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Winner payout</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Winner payout</div>
                   <div className="mt-1 text-[21px] font-[740] text-white">{projectedPot ? money(projectedPot * 0.93) : '—'}</div>
                 </div>
               </div>
               <div className="mt-3 text-[12.8px] text-slate-400">{setupNote}</div>
             </div>
 
-            <div className="mt-5 flex gap-2">
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
               <Button className="flex-1 justify-center" onClick={launchMatch}>
                 {challenge ? 'Lock seat & start' : humanOnly ? 'Open friends board' : 'Start solo match'}
               </Button>
@@ -382,6 +384,7 @@ export function ChessArena({ stake, balance, challenge, user, onLockStake, onFin
               </div>
             </div>
           </GamePanel>
+          <GameChat challenge={challenge} user={user} />
         </div>
       </GameScreen>
     );
@@ -403,9 +406,9 @@ export function ChessArena({ stake, balance, challenge, user, onLockStake, onFin
           <Badge variant="emerald">{turn === 'w' ? `${players.white.name} to move` : `${players.black.name} to move`}</Badge>
         </div>
       </GameHero>
-      <div className="grid lg:grid-cols-[minmax(340px,640px)_360px] gap-7 items-start">
+      <div className="grid gap-5 items-start lg:grid-cols-[minmax(340px,640px)_360px] sm:gap-7">
         <GamePanel className="p-[18px] sm:p-6">
-          <div className="mb-3 flex items-center justify-between text-sm text-slate-200">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-200">
             <div className="flex items-center gap-2"><span className="text-xl">{players.black.avatar}</span> {players.black.name} • {players.black.rating}</div>
             <div className="font-[650] tabular-nums text-white">{Math.floor(blackTime/60)}:{String(blackTime%60).padStart(2,'0')}</div>
           </div>
@@ -430,20 +433,20 @@ export function ChessArena({ stake, balance, challenge, user, onLockStake, onFin
                       if(sq && sq.color===currentColor){ setSelected(square); } else { setSelected(null); }
                     }}
                     className={cn(
-                      'relative flex items-center justify-center text-[28px] sm:text-[37px] transition',
+                      'relative flex items-center justify-center text-[24px] sm:text-[37px] transition',
                       dark ? 'bg-[#c8b79d] dark:bg-[#3b3329]' : 'bg-[#f1e8da] dark:bg-[#5b4d3b]',
                       isSel && 'ring-3 ring-amber-400 z-10',
                     )}
                   >
                     <span className={sq?.color==='w' ? 'text-zinc-900' : 'text-zinc-800'} style={{filter:'drop-shadow(0 1px 0 rgba(255,255,255,.35))'}}>{piece}</span>
-                    {isTarget && <span className="absolute w-[14px] h-[14px] rounded-full bg-zinc-900/30 dark:bg-amber-200/40" />}
+                    {isTarget && <span className="absolute h-[10px] w-[10px] rounded-full bg-zinc-900/30 dark:bg-amber-200/40 sm:h-[14px] sm:w-[14px]" />}
                   </button>
                 );
               }))}
             </div>
           </div>
 
-          <div className="mt-3 flex items-center justify-between text-sm text-slate-200">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-200">
             <div className="flex items-center gap-2"><span className="text-xl">{players.white.avatar}</span> {players.white.name} • {players.white.rating}</div>
             <div className="font-[650] tabular-nums text-white">{Math.floor(whiteTime/60)}:{String(whiteTime%60).padStart(2,'0')}</div>
           </div>
@@ -456,11 +459,11 @@ export function ChessArena({ stake, balance, challenge, user, onLockStake, onFin
               <Pill className={gamePillClass}>{turn === 'w' ? `${players.white.name} to move` : `${players.black.name} to move`}</Pill>
             </div>
             <div className="mt-3 h-[220px] overflow-auto rounded-[20px] border border-white/10 bg-white/[0.05] px-3 py-3 font-mono text-[13.5px] text-slate-200">
-              {moves.length===0 ? <span className="text-slate-500">d4 and e4 still own the center.</span> : (
+              {moves.length===0 ? <span className="text-slate-400">d4 and e4 still own the center.</span> : (
                 <div className="grid grid-cols-[34px_1fr_1fr] gap-x-3 gap-y-1">
                   {Array.from({length: Math.ceil(moves.length/2)}).map((_,i)=>(
                     <React.Fragment key={i}>
-                      <div className="text-slate-500">{i+1}.</div>
+                      <div className="text-slate-400">{i+1}.</div>
                       <div>{moves[i*2]||''}</div>
                       <div>{moves[i*2+1]||''}</div>
                     </React.Fragment>
@@ -479,7 +482,7 @@ export function ChessArena({ stake, balance, challenge, user, onLockStake, onFin
               <li>Clock keeps running by side to move</li>
             </ul>
           </GamePanel>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Button
               variant="secondary"
               className="flex-1"
@@ -494,6 +497,7 @@ export function ChessArena({ stake, balance, challenge, user, onLockStake, onFin
               Resign
             </Button>
           </div>
+          <GameChat challenge={challenge} user={user} />
         </div>
       </div>
     </GameScreen>
